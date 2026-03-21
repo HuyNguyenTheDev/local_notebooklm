@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List
 from uuid import uuid4
 
-from backend.models.document import Document, DocumentPreview
+from backend.models.document import Document, DocumentPreview, WorkspacePreview
 from backend.services.file_parser import parse_file
 
 
@@ -65,6 +65,25 @@ def list_documents(workspace_id: str) -> List[Document]:
     return [doc for doc in _load_documents() if doc.workspace_id == workspace_id]
 
 
+def list_workspaces() -> List[WorkspacePreview]:
+    workspaces: dict[str, datetime] = {}
+    for doc in _load_documents():
+        workspace_id = doc.workspace_id.strip()
+        if not workspace_id:
+            continue
+
+        created_at = _parse_datetime(doc.created_at)
+        previous = workspaces.get(workspace_id)
+        if previous is None or created_at < previous:
+            workspaces[workspace_id] = created_at
+
+    ordered = sorted(workspaces.items(), key=lambda item: item[1], reverse=True)
+    return [
+        WorkspacePreview(workspace_id=workspace_id, created_at=created_at.isoformat())
+        for workspace_id, created_at in ordered
+    ]
+
+
 def delete_document(doc_id: str, workspace_id: str) -> bool:
     docs = _load_documents()
     target = next((doc for doc in docs if doc.id == doc_id and doc.workspace_id == workspace_id), None)
@@ -78,6 +97,20 @@ def delete_document(doc_id: str, workspace_id: str) -> bool:
     updated = [doc for doc in docs if doc.id != doc_id]
     _save_documents(updated)
     return True
+
+
+def delete_workspace(workspace_id: str) -> int:
+    docs = _load_documents()
+    targets = [doc for doc in docs if doc.workspace_id == workspace_id]
+
+    for doc in targets:
+        path = Path(doc.path)
+        if path.exists():
+            path.unlink()
+
+    updated = [doc for doc in docs if doc.workspace_id != workspace_id]
+    _save_documents(updated)
+    return len(targets)
 
 
 def rename_document(doc_id: str, workspace_id: str, new_filename: str) -> bool:
@@ -105,3 +138,10 @@ def _load_documents() -> List[Document]:
 def _save_documents(documents: List[Document]) -> None:
     payload = [doc.model_dump() for doc in documents]
     METADATA_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _parse_datetime(raw_value: str) -> datetime:
+    try:
+        return datetime.fromisoformat(raw_value)
+    except ValueError:
+        return datetime.fromtimestamp(0, tz=timezone.utc)

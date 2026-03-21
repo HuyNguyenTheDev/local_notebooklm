@@ -2,11 +2,16 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException, Query
 
-from backend.models.document import DocumentPreview
-from backend.services.knowledge_store import delete_document, list_document_previews, rename_document
+from backend.models.document import DocumentPreview, WorkspacePreview
+from backend.services.knowledge_store import delete_document, delete_workspace, list_document_previews, list_workspaces, rename_document
 
 
 router = APIRouter(prefix="/documents", tags=["knowledge"])
+
+
+@router.get("/workspaces", response_model=List[WorkspacePreview])
+def get_workspaces() -> List[WorkspacePreview]:
+    return list_workspaces()
 
 
 @router.get("", response_model=List[DocumentPreview])
@@ -21,6 +26,12 @@ def remove_document(doc_id: str, workspace_id: str = Query(...)) -> dict:
         raise HTTPException(status_code=404, detail="Document not found")
 
     return {"status": "deleted", "id": doc_id}
+
+
+@router.delete("/workspace/{workspace_id}")
+def remove_workspace(workspace_id: str) -> dict:
+    deleted_count = delete_workspace(workspace_id=workspace_id)
+    return {"status": "deleted", "workspace_id": workspace_id, "deleted_documents": deleted_count}
 
 
 @router.patch("/{doc_id}")

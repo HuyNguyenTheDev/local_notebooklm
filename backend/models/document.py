@@ -19,6 +19,11 @@ class DocumentPreview(BaseModel):
     created_at: str
 
 
+class WorkspacePreview(BaseModel):
+    workspace_id: str
+    created_at: str
+
+
 class ChatRequest(BaseModel):
     question: str
     workspace_id: str

@@ -3,14 +3,57 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { WorkspacePreview, deleteWorkspace as deleteWorkspaceApi, getWorkspaces } from "@/lib/api";
 import { useUi } from "@/lib/ui";
+
+type WorkspaceItem = {
+  name: string;
+  createdAt: string;
+  icon: string;
+};
 
 export default function HomePage() {
   const router = useRouter();
   const { t } = useUi();
   const [workspaceName, setWorkspaceName] = useState("");
-  const [workspaces, setWorkspaces] = useState<string[]>([]);
+  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
   const [menuWorkspace, setMenuWorkspace] = useState<string | null>(null);
+
+  const workspaceIcons = ["📘", "📗", "📙", "📕", "📓", "🧠", "🗂️", "📝"];
+
+  const pickIcon = (seed?: string) => {
+    if (!seed) {
+      return workspaceIcons[Math.floor(Math.random() * workspaceIcons.length)];
+    }
+
+    let hash = 0;
+    for (let i = 0; i < seed.length; i += 1) {
+      hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+    }
+    return workspaceIcons[hash % workspaceIcons.length];
+  };
+
+  const mergeWorkspaceSources = (localItems: WorkspaceItem[], remoteItems: WorkspacePreview[]) => {
+    const merged = new Map<string, WorkspaceItem>();
+
+    localItems.forEach((item) => {
+      merged.set(item.name, item);
+    });
+
+    remoteItems.forEach((item) => {
+      if (merged.has(item.workspace_id)) {
+        return;
+      }
+
+      merged.set(item.workspace_id, {
+        name: item.workspace_id,
+        createdAt: item.created_at,
+        icon: pickIcon(item.workspace_id),
+      });
+    });
+
+    return Array.from(merged.values());
+  };
 
   const accentGradients = [
     "from-[#f97316] to-[#eab308]",
@@ -22,18 +65,65 @@ export default function HomePage() {
   ];
 
   useEffect(() => {
-    const raw = window.localStorage.getItem("workspaces");
-    if (!raw) {
-      return;
-    }
+    const loadWorkspaces = async () => {
+      let localItems: WorkspaceItem[] = [];
 
-    try {
-      const parsed = JSON.parse(raw) as string[];
-      setWorkspaces(parsed);
-    } catch {
-      setWorkspaces([]);
-    }
+      const raw = window.localStorage.getItem("workspaces");
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+
+          if (
+            Array.isArray(parsed) &&
+            parsed.every(
+              (item) =>
+                typeof item === "object" &&
+                item !== null &&
+                "name" in item &&
+                "createdAt" in item &&
+                "icon" in item,
+            )
+          ) {
+            localItems = parsed as WorkspaceItem[];
+          } else if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
+            localItems = parsed.map((name) => ({
+              name,
+              createdAt: new Date().toISOString(),
+              icon: pickIcon(),
+            }));
+            window.localStorage.setItem("workspaces", JSON.stringify(localItems));
+          }
+        } catch {
+          localItems = [];
+        }
+      }
+
+      setWorkspaces(localItems);
+
+      try {
+        const remoteItems = await getWorkspaces();
+        const merged = mergeWorkspaceSources(localItems, remoteItems);
+        setWorkspaces(merged);
+        window.localStorage.setItem("workspaces", JSON.stringify(merged));
+      } catch {
+        // Keep local workspaces when backend is unavailable.
+      }
+    };
+
+    void loadWorkspaces();
   }, []);
+
+  const formatWorkspaceDate = (isoDate: string) => {
+    const date = new Date(isoDate);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+    return new Intl.DateTimeFormat("vi-VN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(date);
+  };
 
   const createWorkspace = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -42,8 +132,13 @@ export default function HomePage() {
       return;
     }
 
-    if (!workspaces.includes(cleaned)) {
-      const updated = [cleaned, ...workspaces];
+    if (!workspaces.some((workspace) => workspace.name === cleaned)) {
+      const newWorkspace: WorkspaceItem = {
+        name: cleaned,
+        createdAt: new Date().toISOString(),
+        icon: pickIcon(),
+      };
+      const updated = [newWorkspace, ...workspaces];
       setWorkspaces(updated);
       window.localStorage.setItem("workspaces", JSON.stringify(updated));
     }
@@ -52,8 +147,8 @@ export default function HomePage() {
     router.push(`/workspace/${encodeURIComponent(cleaned)}`);
   };
 
-  const openWorkspace = (name: string) => {
-    router.push(`/workspace/${encodeURIComponent(name)}`);
+  const openWorkspace = (workspace: WorkspaceItem) => {
+    router.push(`/workspace/${encodeURIComponent(workspace.name)}`);
   };
 
   const getAccentClass = (name: string) => {
@@ -64,8 +159,10 @@ export default function HomePage() {
     return accentGradients[hash % accentGradients.length];
   };
 
-  const deleteWorkspace = (name: string) => {
-    const updated = workspaces.filter((workspace) => workspace !== name);
+  const deleteWorkspace = async (name: string) => {
+    await deleteWorkspaceApi(name);
+
+    const updated = workspaces.filter((workspace) => workspace.name !== name);
     setWorkspaces(updated);
     window.localStorage.setItem("workspaces", JSON.stringify(updated));
     setMenuWorkspace(null);
@@ -102,25 +199,25 @@ export default function HomePage() {
           ) : (
             workspaces.map((workspace) => (
               <article
-                key={workspace}
+                key={workspace.name}
                 className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-card dark:border-slate-700 dark:bg-slate-900"
               >
-                <div className={`absolute left-0 top-0 h-full w-2 bg-gradient-to-b ${getAccentClass(workspace)}`} />
+                <div className={`absolute left-0 top-0 h-full w-2 bg-gradient-to-b ${getAccentClass(workspace.name)}`} />
 
                 <button
                   type="button"
-                  onClick={() => setMenuWorkspace((current) => (current === workspace ? null : workspace))}
+                  onClick={() => setMenuWorkspace((current) => (current === workspace.name ? null : workspace.name))}
                   className="absolute right-3 top-3 z-10 rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   aria-label="Workspace menu"
                 >
                   ...
                 </button>
 
-                {menuWorkspace === workspace ? (
+                {menuWorkspace === workspace.name ? (
                   <div className="absolute right-3 top-11 z-20 min-w-[140px] rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
                     <button
                       type="button"
-                      onClick={() => deleteWorkspace(workspace)}
+                      onClick={() => void deleteWorkspace(workspace.name)}
                       className="w-full rounded-md px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
                     >
                       {t("deleteWorkspace")}
@@ -130,9 +227,14 @@ export default function HomePage() {
 
                 <button type="button" onClick={() => openWorkspace(workspace)} className="ml-3 block w-full pr-8 text-left">
                   <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">{t("workspace")}</p>
-                  <h2 className="mt-2 line-clamp-2 text-lg font-semibold text-slate-900 dark:text-slate-100">{workspace}</h2>
+                  <h2 className="mt-2 line-clamp-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
+                    <span className="mr-2" aria-hidden="true">
+                      {workspace.icon}
+                    </span>
+                    {workspace.name}
+                  </h2>
                   <p className="mt-3 text-xs text-slate-500 transition group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200">
-                    {t("enterWorkspace")}
+                    {t("workspaceCreatedAt")}: {formatWorkspaceDate(workspace.createdAt)}
                   </p>
                 </button>
               </article>

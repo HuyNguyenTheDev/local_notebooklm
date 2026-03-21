@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -15,8 +16,16 @@ export default function TopBar() {
     <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/80 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Link href="/" className="text-lg font-bold text-slate-900 dark:text-white">
-            {t("appTitle")}
+          <Link href="/" className="inline-flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-white">
+            <Image
+              src="/notebook.png"
+              alt="Notebook logo"
+              width={24}
+              height={24}
+              className="h-6 w-6 rounded"
+              priority
+            />
+            <span>{t("appTitle")}</span>
           </Link>
           {workspaceName ? (
             <div className="hidden max-w-[320px] items-center gap-2 rounded-full border border-slate-200 bg-gradient-to-r from-white to-slate-50 px-2 py-1 text-xs text-slate-700 shadow-sm md:flex dark:border-slate-700 dark:from-slate-900 dark:to-slate-800 dark:text-slate-200">
