@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatMessage, sendChat } from "@/lib/api";
 import { useUi } from "@/lib/ui";
@@ -15,16 +15,18 @@ export default function ChatBox({ workspaceId }: ChatBoxProps) {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const hasMessages = useMemo(() => messages.length > 0, [messages]);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isTyping]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
     const trimmed = question.trim();
-    if (!trimmed || isTyping) {
-      return;
-    }
+    if (!trimmed || isTyping) return;
 
     setQuestion("");
     setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
@@ -45,40 +47,123 @@ export default function ChatBox({ workspaceId }: ChatBoxProps) {
   };
 
   return (
-    <div className="flex h-full min-h-[420px] flex-col rounded-xl bg-white/90 p-5 shadow-card backdrop-blur animate-rise dark:bg-slate-900/80">
-      <h2 className="text-lg font-semibold text-ink dark:text-slate-100">{t("chatTitle")}</h2>
-      <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{t("chatHint")}</p>
-
-      <div className="mt-4 flex-1 space-y-3 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
-        {!hasMessages ? (
-          <p className="text-sm text-slate-500 dark:text-slate-400">{t("startQuestion")}</p>
-        ) : (
-          messages.map((message, index) => <MessageBubble key={index} message={message} />)
+    <div className="flex h-full flex-col rounded-xxl bg-surface-container-lowest dark:bg-slate-900 overflow-hidden border border-outline-variant/10">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-outline-variant/10 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm shrink-0">
+        <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-sm">
+          <span
+            className="material-symbols-outlined text-on-primary text-[18px]"
+            style={{ fontVariationSettings: "'FILL' 1" }}
+          >
+            smart_toy
+          </span>
+        </div>
+        <div className="flex-1">
+          <h2 className="font-bold text-on-surface text-sm font-headline">{t("chatTitle")}</h2>
+          <p className="text-[11px] text-on-surface-variant">{t("chatHint")}</p>
+        </div>
+        {hasMessages && (
+          <button
+            type="button"
+            onClick={() => setMessages([])}
+            className="text-[11px] font-medium text-on-surface-variant hover:text-error transition-colors px-2 py-1 rounded-lg hover:bg-surface-container-low"
+          >
+            {t("clearChat")}
+          </button>
         )}
-
-        {isTyping ? (
-          <div className="inline-flex items-center gap-2 rounded-md bg-white px-3 py-2 text-xs text-slate-500 dark:bg-slate-900 dark:text-slate-400">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-slate-400" />
-            {t("typing")}
-          </div>
-        ) : null}
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-4 flex gap-2">
-        <input
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder={t("chatPlaceholder")}
-          className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-moss dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-        />
-        <button
-          type="submit"
-          disabled={isTyping || !question.trim()}
-          className="rounded-md bg-pine px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {t("send")}
-        </button>
-      </form>
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-gradient-to-b from-surface-container-lowest to-surface-container-low dark:from-slate-900 dark:to-slate-950">
+        {!hasMessages ? (
+          <div className="flex h-full flex-col items-center justify-center py-12 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-primary-container flex items-center justify-center mb-4">
+              <span
+                className="material-symbols-outlined text-primary text-[28px]"
+                style={{ fontVariationSettings: "'FILL' 1" }}
+              >
+                chat_bubble
+              </span>
+            </div>
+            <p className="font-bold text-on-surface text-sm mb-1">{t("startQuestion")}</p>
+            <p className="text-xs text-on-surface-variant max-w-xs leading-relaxed">
+              {t("startQuestionHint")}
+            </p>
+
+            {/* Suggested questions */}
+            <div className="mt-6 flex flex-col gap-2 w-full max-w-sm">
+              {[t("suggestedQ1"), t("suggestedQ2"), t("suggestedQ3")].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => setQuestion(suggestion)}
+                  className="text-left px-4 py-2.5 rounded-xl bg-surface-container dark:bg-slate-800 hover:bg-surface-container-high hover:text-primary text-xs font-medium text-on-surface-variant transition-all border border-outline-variant/20 hover:border-primary/30"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            {messages.map((message, index) => (
+              <MessageBubble key={index} message={message} />
+            ))}
+            {isTyping && (
+              <div className="flex items-end gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center shrink-0">
+                  <span
+                    className="material-symbols-outlined text-on-primary text-[15px]"
+                    style={{ fontVariationSettings: "'FILL' 1" }}
+                  >
+                    smart_toy
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 px-4 py-3 rounded-2xl rounded-bl-sm shadow-sm">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+                  <span className="text-xs text-on-surface-variant ml-1">{t("typing")}</span>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className="px-5 py-4 border-t border-outline-variant/10 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm shrink-0">
+        <form onSubmit={handleSubmit} className="flex gap-2.5 items-end">
+          <div className="flex-1 relative">
+            <textarea
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSubmit(e as unknown as FormEvent<HTMLFormElement>);
+                }
+              }}
+              placeholder={t("chatPlaceholder")}
+              rows={1}
+              className="w-full rounded-xl border border-outline-variant/40 bg-surface-container-low dark:bg-slate-800 px-4 py-3 text-sm outline-none transition-all resize-none placeholder:text-on-surface-variant focus:border-primary focus:ring-2 focus:ring-primary/15 dark:text-slate-100 leading-relaxed"
+              style={{ minHeight: "44px", maxHeight: "120px" }}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={isTyping || !question.trim()}
+            className="w-11 h-11 flex items-center justify-center rounded-xl bg-primary text-on-primary shadow-md shadow-primary/20 transition-all hover:bg-primary-dim active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
+            aria-label={t("send")}
+          >
+            <span className="material-symbols-outlined text-[20px]">send</span>
+          </button>
+        </form>
+        <p className="text-[10px] text-on-surface-variant mt-2 text-center">
+          {t("chatInputHint")}
+        </p>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { WorkspacePreview, deleteWorkspace as deleteWorkspaceApi, getWorkspaces } from "@/lib/api";
@@ -12,81 +12,65 @@ type WorkspaceItem = {
   icon: string;
 };
 
+const WORKSPACE_ICONS = ["📘", "📗", "📙", "📕", "📓", "🧠", "🗂️", "📝"];
+
+function pickIcon(seed?: string) {
+  if (!seed) return WORKSPACE_ICONS[Math.floor(Math.random() * WORKSPACE_ICONS.length)];
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  return WORKSPACE_ICONS[hash % WORKSPACE_ICONS.length];
+}
+
+const DOC_TYPE_ICONS: Record<string, string> = {
+  pdf: "picture_as_pdf",
+  txt: "text_snippet",
+  md: "article",
+};
+
+function docIcon(type: string) {
+  return DOC_TYPE_ICONS[type.toLowerCase()] ?? "description";
+}
+
 export default function HomePage() {
   const router = useRouter();
   const { t } = useUi();
   const [workspaceName, setWorkspaceName] = useState("");
   const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
   const [menuWorkspace, setMenuWorkspace] = useState<string | null>(null);
-
-  const workspaceIcons = ["📘", "📗", "📙", "📕", "📓", "🧠", "🗂️", "📝"];
-
-  const pickIcon = (seed?: string) => {
-    if (!seed) {
-      return workspaceIcons[Math.floor(Math.random() * workspaceIcons.length)];
-    }
-
-    let hash = 0;
-    for (let i = 0; i < seed.length; i += 1) {
-      hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-    }
-    return workspaceIcons[hash % workspaceIcons.length];
-  };
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const mergeWorkspaceSources = (localItems: WorkspaceItem[], remoteItems: WorkspacePreview[]) => {
     const merged = new Map<string, WorkspaceItem>();
-
-    localItems.forEach((item) => {
-      merged.set(item.name, item);
-    });
-
+    localItems.forEach((item) => merged.set(item.name, item));
     remoteItems.forEach((item) => {
-      if (merged.has(item.workspace_id)) {
-        return;
+      if (!merged.has(item.workspace_id)) {
+        merged.set(item.workspace_id, {
+          name: item.workspace_id,
+          createdAt: item.created_at,
+          icon: pickIcon(item.workspace_id),
+        });
       }
-
-      merged.set(item.workspace_id, {
-        name: item.workspace_id,
-        createdAt: item.created_at,
-        icon: pickIcon(item.workspace_id),
-      });
     });
-
     return Array.from(merged.values());
   };
 
-  const accentGradients = [
-    "from-[#f97316] to-[#eab308]",
-    "from-[#ec4899] to-[#8b5cf6]",
-    "from-[#06b6d4] to-[#3b82f6]",
-    "from-[#22c55e] to-[#0ea5e9]",
-    "from-[#ef4444] to-[#f97316]",
-    "from-[#14b8a6] to-[#22c55e]",
-  ];
-
   useEffect(() => {
-    const loadWorkspaces = async () => {
+    const load = async () => {
       let localItems: WorkspaceItem[] = [];
-
       const raw = window.localStorage.getItem("workspaces");
       if (raw) {
         try {
           const parsed = JSON.parse(raw) as unknown;
-
           if (
             Array.isArray(parsed) &&
             parsed.every(
-              (item) =>
-                typeof item === "object" &&
-                item !== null &&
-                "name" in item &&
-                "createdAt" in item &&
-                "icon" in item,
+              (i) => typeof i === "object" && i !== null && "name" in i && "createdAt" in i && "icon" in i,
             )
           ) {
             localItems = parsed as WorkspaceItem[];
-          } else if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
-            localItems = parsed.map((name) => ({
+          } else if (Array.isArray(parsed) && parsed.every((i) => typeof i === "string")) {
+            localItems = (parsed as string[]).map((name) => ({
               name,
               createdAt: new Date().toISOString(),
               icon: pickIcon(),
@@ -97,52 +81,35 @@ export default function HomePage() {
           localItems = [];
         }
       }
-
       setWorkspaces(localItems);
-
       try {
-        const remoteItems = await getWorkspaces();
-        const merged = mergeWorkspaceSources(localItems, remoteItems);
+        const remote = await getWorkspaces();
+        const merged = mergeWorkspaceSources(localItems, remote);
         setWorkspaces(merged);
         window.localStorage.setItem("workspaces", JSON.stringify(merged));
       } catch {
-        // Keep local workspaces when backend is unavailable.
+        // keep local
       }
     };
-
-    void loadWorkspaces();
+    void load();
   }, []);
 
-  const formatWorkspaceDate = (isoDate: string) => {
-    const date = new Date(isoDate);
-    if (Number.isNaN(date.getTime())) {
-      return "";
-    }
-    return new Intl.DateTimeFormat("vi-VN", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(date);
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(d);
   };
 
   const createWorkspace = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const cleaned = workspaceName.trim();
-    if (!cleaned) {
-      return;
-    }
-
-    if (!workspaces.some((workspace) => workspace.name === cleaned)) {
-      const newWorkspace: WorkspaceItem = {
-        name: cleaned,
-        createdAt: new Date().toISOString(),
-        icon: pickIcon(),
-      };
-      const updated = [newWorkspace, ...workspaces];
+    if (!cleaned) return;
+    if (!workspaces.some((w) => w.name === cleaned)) {
+      const nw: WorkspaceItem = { name: cleaned, createdAt: new Date().toISOString(), icon: pickIcon() };
+      const updated = [nw, ...workspaces];
       setWorkspaces(updated);
       window.localStorage.setItem("workspaces", JSON.stringify(updated));
     }
-
     setWorkspaceName("");
     router.push(`/workspace/${encodeURIComponent(cleaned)}`);
   };
@@ -151,97 +118,234 @@ export default function HomePage() {
     router.push(`/workspace/${encodeURIComponent(workspace.name)}`);
   };
 
-  const getAccentClass = (name: string) => {
-    let hash = 0;
-    for (let i = 0; i < name.length; i += 1) {
-      hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-    }
-    return accentGradients[hash % accentGradients.length];
-  };
-
   const deleteWorkspace = async (name: string) => {
     await deleteWorkspaceApi(name);
-
-    const updated = workspaces.filter((workspace) => workspace.name !== name);
+    const updated = workspaces.filter((w) => w.name !== name);
     setWorkspaces(updated);
     window.localStorage.setItem("workspaces", JSON.stringify(updated));
     setMenuWorkspace(null);
   };
 
+  const hasWorkspaces = workspaces.length > 0;
+
   return (
-    <main className="min-h-screen px-4 py-6">
-      <div className="mx-auto max-w-5xl">
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-card dark:border-slate-700 dark:bg-slate-900">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t("pickWorkspace")}</h1>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{t("workspaceHint")}</p>
+    <div className="min-h-full relative overflow-hidden">
+      {/* Background decorative blobs */}
+      <div className="absolute -top-32 -right-32 w-96 h-96 bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-secondary/5 rounded-full blur-[120px] pointer-events-none" />
 
-          <form onSubmit={createWorkspace} className="mt-5 flex flex-col gap-3 sm:flex-row">
-            <input
-              value={workspaceName}
-              onChange={(event) => setWorkspaceName(event.target.value)}
-              placeholder={t("workspaceName")}
-              className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-moss dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-            />
-            <button
-              type="submit"
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:brightness-110 dark:bg-slate-100 dark:text-slate-900"
+      <div className="relative z-10 max-w-5xl mx-auto px-6 py-5">
+        {/* Hero */}
+        <div className="text-center mb-12 max-w-2xl mx-auto animate-fadeIn">
+          <span className="inline-block px-4 py-1.5 rounded-full bg-primary-container text-on-primary-container text-xs font-bold mb-5 tracking-wide uppercase font-manrope">
+            {t("heroTag")}
+          </span>
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-on-surface mb-5 tracking-tight leading-tight font-headline">
+            {t("heroTitle1")}{" "}
+            <br />
+            <span className="bg-gradient-to-r from-primary to-primary-dim bg-clip-text text-transparent">
+              {t("heroTitle2")}
+            </span>
+          </h1>
+          <p className="text-on-surface-variant text-lg leading-relaxed">
+            {t("heroSubtitle")}
+          </p>
+        </div>
+
+        {/* Create Workspace + Upload Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mb-12 animate-rise">
+          {/* Main Upload / Create area */}
+          <div className="md:col-span-8 bg-surface-container-lowest dark:bg-slate-900 rounded-xxl p-1.5 group transition-all duration-300 hover:shadow-[0_12px_40px_rgba(42,52,57,0.06)]">
+            <div
+              className={`border-2 border-dashed rounded-[1.2rem] flex flex-col items-center justify-center p-10 text-center transition-colors ${
+                isDragging
+                  ? "border-primary bg-primary/5"
+                  : "border-outline-variant/30 group-hover:border-primary/40"
+              }`}
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setIsDragging(false); }}
             >
-              {t("createWorkspace")}
-            </button>
-          </form>
-        </section>
+              <div className="w-20 h-20 rounded-full bg-surface-container-low dark:bg-slate-800 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform duration-500">
+                <span className="material-symbols-outlined text-4xl text-primary">upload_file</span>
+              </div>
+              <h3 className="text-xl font-bold font-headline mb-2">
+                {hasWorkspaces ? t("pickWorkspace") : t("createFirstWorkspace")}
+              </h3>
+              <p className="text-on-surface-variant text-sm mb-7">
+                {hasWorkspaces ? t("enterNameHint") : t("enterNameFirst")}
+              </p>
 
-        <section className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {workspaces.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-              {t("noWorkspace")}
-            </div>
-          ) : (
-            workspaces.map((workspace) => (
-              <article
-                key={workspace.name}
-                className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-card dark:border-slate-700 dark:bg-slate-900"
-              >
-                <div className={`absolute left-0 top-0 h-full w-2 bg-gradient-to-b ${getAccentClass(workspace.name)}`} />
-
+              {/* Create form */}
+              <form onSubmit={createWorkspace} className="flex gap-3 w-full max-w-md">
+                <input
+                  value={workspaceName}
+                  onChange={(e) => setWorkspaceName(e.target.value)}
+                  placeholder={t("workspaceName")}
+                  className="flex-1 rounded-xl border border-outline-variant/50 bg-surface-container-low dark:bg-slate-800 px-4 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-on-surface-variant"
+                />
                 <button
-                  type="button"
-                  onClick={() => setMenuWorkspace((current) => (current === workspace.name ? null : workspace.name))}
-                  className="absolute right-3 top-3 z-10 rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                  aria-label="Workspace menu"
+                  type="submit"
+                  className="px-6 py-2.5 bg-primary text-on-primary rounded-xl font-bold hover:bg-primary-dim transition-all shadow-lg shadow-primary/20 text-sm"
                 >
-                  ...
+                  {t("createWorkspace")}
                 </button>
+              </form>
+            </div>
+          </div>
 
-                {menuWorkspace === workspace.name ? (
-                  <div className="absolute right-3 top-11 z-20 min-w-[140px] rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                    <button
-                      type="button"
-                      onClick={() => void deleteWorkspace(workspace.name)}
-                      className="w-full rounded-md px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                    >
-                      {t("deleteWorkspace")}
-                    </button>
-                  </div>
-                ) : null}
+          {/* Quick action cards */}
+          <div className="md:col-span-4 flex flex-col gap-4">
+            {/* Tip card */}
+            <div className="bg-primary-container/40 dark:bg-indigo-950/40 rounded-xxl p-5 flex items-start gap-3">
+              <span
+                className="material-symbols-outlined text-primary mt-0.5 shrink-0"
+                style={{ fontVariationSettings: "'FILL' 1" }}
+              >
+                lightbulb
+              </span>
+              <p className="text-[11px] font-medium text-on-primary-container dark:text-indigo-200 leading-relaxed">
+                {t("tipSeparateWorkspaces")}
+              </p>
+            </div>
 
-                <button type="button" onClick={() => openWorkspace(workspace)} className="ml-3 block w-full pr-8 text-left">
-                  <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">{t("workspace")}</p>
-                  <h2 className="mt-2 line-clamp-2 text-lg font-semibold text-slate-900 dark:text-slate-100">
-                    <span className="mr-2" aria-hidden="true">
+            {/* Format info */}
+            <div className="bg-surface-container-low dark:bg-slate-800/60 rounded-xxl p-5 flex flex-col gap-3">
+              <p className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">{t("supportedFormats")}</p>
+              {[
+                { icon: "picture_as_pdf", label: "PDF Documents", color: "text-red-500" },
+                { icon: "text_snippet", label: "Plain Text (.txt)", color: "text-blue-500" },
+                { icon: "article", label: "Markdown (.md)", color: "text-purple-500" },
+              ].map(({ icon, label, color }) => (
+                <div key={label} className="flex items-center gap-2.5">
+                  <span className={`material-symbols-outlined text-[18px] ${color}`}>{icon}</span>
+                  <span className="text-xs text-on-surface-variant">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Workspace Grid */}
+        {hasWorkspaces && (
+          <section className="animate-rise" style={{ animationDelay: "100ms" }}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-xl font-extrabold font-headline text-on-surface tracking-tight">
+                {t("yourWorkspaces")}
+              </h2>
+              <span className="text-xs font-semibold text-on-surface-variant bg-surface-container px-3 py-1 rounded-full">
+                {workspaces.length} workspace{workspaces.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {workspaces.map((workspace, index) => (
+                <article
+                  key={workspace.name}
+                  className="group relative bg-surface-container-lowest dark:bg-slate-900 rounded-3xl p-5 hover:shadow-xl transition-all duration-200 flex flex-col justify-between min-h-[160px] cursor-pointer border border-transparent hover:border-primary/20 animate-rise"
+                  style={{ animationDelay: `${index * 60}ms` }}
+                  onClick={() => openWorkspace(workspace)}
+                >
+                  {/* Menu button */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuWorkspace((cur) => (cur === workspace.name ? null : workspace.name));
+                    }}
+                    className="absolute top-4 right-4 z-10 w-7 h-7 rounded-lg text-on-surface-variant opacity-0 group-hover:opacity-100 hover:bg-surface-container-high flex items-center justify-center transition-all"
+                    aria-label="Menu"
+                  >
+                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
+                  </button>
+
+                  {/* Dropdown */}
+                  {menuWorkspace === workspace.name && (
+                    <div className="absolute right-4 top-12 z-20 min-w-[160px] overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow-xl animate-slideIn">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); void deleteWorkspace(workspace.name); }}
+                        className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-error transition-colors hover:bg-red-50 dark:hover:bg-red-950/30"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">delete</span>
+                        {t("deleteWorkspace")}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Content */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-2xl bg-surface-container dark:bg-slate-800 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
                       {workspace.icon}
+                    </div>
+                    <div className="flex-1 min-w-0 pr-7">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-0.5">
+                        {t("workspace")}
+                      </p>
+                      <h3 className="font-bold text-on-surface group-hover:text-primary transition-colors truncate text-sm">
+                        {workspace.name}
+                      </h3>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-outline-variant/10">
+                    <p className="text-[11px] text-on-surface-variant">
+                      {t("workspaceCreatedAt")}: {formatDate(workspace.createdAt)}
+                    </p>
+                    <span className="material-symbols-outlined text-[16px] text-on-surface-variant group-hover:text-primary transition-colors">
+                      arrow_forward
                     </span>
-                    {workspace.name}
-                  </h2>
-                  <p className="mt-3 text-xs text-slate-500 transition group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-200">
-                    {t("workspaceCreatedAt")}: {formatWorkspaceDate(workspace.createdAt)}
-                  </p>
-                </button>
-              </article>
-            ))
-          )}
-        </section>
+                  </div>
+                </article>
+              ))}
+
+              {/* Ghost add card */}
+              <button
+                type="button"
+                onClick={() => document.querySelector<HTMLInputElement>('input[placeholder]')?.focus()}
+                className="group border-2 border-dashed border-outline-variant/30 rounded-3xl p-5 flex flex-col items-center justify-center gap-3 hover:border-primary/50 hover:bg-primary/5 transition-all min-h-[160px]"
+              >
+                <div className="w-10 h-10 rounded-full bg-surface-container dark:bg-slate-800 flex items-center justify-center group-hover:bg-primary-container transition-colors">
+                  <span className="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors text-[20px]">
+                    add
+                  </span>
+                </div>
+                <p className="text-sm font-bold text-on-surface-variant group-hover:text-primary transition-colors">
+                  {t("newWorkspace")}
+                </p>
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* Footer meta */}
+        <div className="mt-16 flex flex-col sm:flex-row items-center justify-between border-t border-outline-variant/10 pt-6 text-on-surface-variant text-xs gap-3">
+          <div className="flex items-center gap-5">
+            <span className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {t("aiSystemsActive")}
+            </span>
+            <span>Local NotebookLM v1.0</span>
+          </div>
+          <div className="flex items-center gap-5">
+            <span className="hover:text-primary cursor-pointer transition-colors">{t("privacy")}</span>
+            <span className="hover:text-primary cursor-pointer transition-colors">{t("documentation")}</span>
+          </div>
+        </div>
       </div>
-    </main>
+
+      {/* Help floating tooltip */}
+      <div className="fixed bottom-8 right-8 glass dark:bg-slate-900/80 p-3.5 rounded-xl shadow-[0_12px_40px_rgba(42,52,57,0.1)] flex items-center gap-3 border border-white/20 dark:border-slate-700/50 z-50">
+        <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+        <p className="text-xs font-medium text-on-surface dark:text-slate-200">{t("helpTooltip")}</p>
+        <button
+          type="button"
+          className="bg-primary text-on-primary p-1.5 rounded-lg hover:scale-105 transition-transform"
+        >
+          <span className="material-symbols-outlined text-[16px] leading-none">chat_bubble</span>
+        </button>
+      </div>
+    </div>
   );
 }

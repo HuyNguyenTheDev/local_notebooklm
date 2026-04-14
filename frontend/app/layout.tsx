@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import { UiProvider } from "@/lib/ui";
 
@@ -13,10 +14,17 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-shell text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <body className="bg-surface text-on-surface dark:bg-slate-950 dark:text-slate-100 overflow-hidden">
         <UiProvider>
-          <TopBar />
-          {children}
+          <div className="flex h-screen w-full overflow-hidden">
+            <Sidebar />
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+              <TopBar />
+              <main className="flex-1 overflow-y-auto">
+                {children}
+              </main>
+            </div>
+          </div>
         </UiProvider>
       </body>
     </html>

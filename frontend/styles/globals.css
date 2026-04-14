@@ -1,15 +1,66 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ── Light mode Design System tokens ── */
 :root {
   color-scheme: light;
+
+  --color-surface: #f7f9fb;
+  --color-background: #f7f9fb;
+  --color-on-surface: #2a3439;
+  --color-on-background: #2a3439;
+  --color-on-surface-variant: #566166;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f0f4f7;
+  --color-surface-container: #e8eff3;
+  --color-surface-container-high: #e1e9ee;
+  --color-surface-container-highest: #d9e4ea;
+  --color-surface-bright: #f7f9fb;
+  --color-surface-dim: #cfdce3;
+  --color-outline-variant: #a9b4b9;
+  --color-outline: #717c82;
+  --color-secondary-container: #d3e4fe;
+  --color-on-secondary-container: #435368;
+  --color-primary-container: #e2dfff;
+  --color-on-primary-container: #3f33d6;
+  --color-tertiary-container: #d2d9f8;
+  --color-on-tertiary-container: #444c65;
+  --color-secondary: #506076;
+  --color-tertiary: #575e78;
+  --color-error: #9e3f4e;
 }
 
+/* ── Dark mode Design System tokens ── */
 .dark {
   color-scheme: dark;
+
+  --color-surface: #0f172a;
+  --color-background: #0f172a;
+  --color-on-surface: #e2e8f0;
+  --color-on-background: #e2e8f0;
+  --color-on-surface-variant: #94a3b8;
+  --color-surface-container-lowest: #1e293b;
+  --color-surface-container-low: #1e293b;
+  --color-surface-container: #263244;
+  --color-surface-container-high: #334155;
+  --color-surface-container-highest: #3d4f66;
+  --color-surface-bright: #1e293b;
+  --color-surface-dim: #111827;
+  --color-outline-variant: #334155;
+  --color-outline: #475569;
+  --color-secondary-container: #1e3a5f;
+  --color-on-secondary-container: #bfdbfe;
+  --color-primary-container: #1e1b4b;
+  --color-on-primary-container: #c7d2fe;
+  --color-tertiary-container: #1e2044;
+  --color-on-tertiary-container: #c7d2fe;
+  --color-secondary: #94a3b8;
+  --color-tertiary: #a5b4fc;
+  --color-error: #f87171;
 }
 
 * {
@@ -20,24 +71,112 @@ html,
 body {
   margin: 0;
   padding: 0;
-  font-family: "Space Grotesk", sans-serif;
-  background: radial-gradient(circle at 20% 10%, #f9e8dc 0%, transparent 40%),
-    radial-gradient(circle at 80% 0%, #d9ebe2 0%, transparent 35%),
-    #f4f1ea;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--color-surface);
+  color: var(--color-on-surface);
   transition: background-color 220ms ease, color 220ms ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-.dark body {
-  background: radial-gradient(circle at 20% 10%, rgba(29, 78, 216, 0.15) 0%, transparent 35%),
-    radial-gradient(circle at 80% 0%, rgba(147, 51, 234, 0.12) 0%, transparent 35%),
-    #020617;
+/* ── Override Tailwind static color utilities with CSS variables ── */
+/* These ensure design-system token classes respond to dark mode */
+.bg-surface                  { background-color: var(--color-surface) !important; }
+.bg-background               { background-color: var(--color-background) !important; }
+.bg-surface-bright           { background-color: var(--color-surface-bright) !important; }
+.bg-surface-dim              { background-color: var(--color-surface-dim) !important; }
+.bg-surface-container-lowest { background-color: var(--color-surface-container-lowest) !important; }
+.bg-surface-container-low    { background-color: var(--color-surface-container-low) !important; }
+.bg-surface-container        { background-color: var(--color-surface-container) !important; }
+.bg-surface-container-high   { background-color: var(--color-surface-container-high) !important; }
+.bg-surface-container-highest{ background-color: var(--color-surface-container-highest) !important; }
+.bg-outline-variant          { background-color: var(--color-outline-variant) !important; }
+.bg-secondary-container      { background-color: var(--color-secondary-container) !important; }
+.bg-primary-container        { background-color: var(--color-primary-container) !important; }
+.bg-tertiary-container       { background-color: var(--color-tertiary-container) !important; }
+
+.text-on-surface             { color: var(--color-on-surface) !important; }
+.text-on-background          { color: var(--color-on-background) !important; }
+.text-on-surface-variant     { color: var(--color-on-surface-variant) !important; }
+.text-on-secondary-container { color: var(--color-on-secondary-container) !important; }
+.text-on-primary-container   { color: var(--color-on-primary-container) !important; }
+.text-on-tertiary-container  { color: var(--color-on-tertiary-container) !important; }
+.text-outline-variant        { color: var(--color-outline-variant) !important; }
+.text-outline                { color: var(--color-outline) !important; }
+.text-secondary              { color: var(--color-secondary) !important; }
+.text-tertiary               { color: var(--color-tertiary) !important; }
+.text-error                  { color: var(--color-error) !important; }
+
+.border-outline-variant      { border-color: var(--color-outline-variant) !important; }
+.border-outline              { border-color: var(--color-outline) !important; }
+
+/* Opacity variants that use the tokens */
+.border-outline-variant\/10  { border-color: color-mix(in srgb, var(--color-outline-variant) 10%, transparent) !important; }
+.border-outline-variant\/20  { border-color: color-mix(in srgb, var(--color-outline-variant) 20%, transparent) !important; }
+.border-outline-variant\/30  { border-color: color-mix(in srgb, var(--color-outline-variant) 30%, transparent) !important; }
+.border-outline-variant\/40  { border-color: color-mix(in srgb, var(--color-outline-variant) 40%, transparent) !important; }
+.border-outline-variant\/50  { border-color: color-mix(in srgb, var(--color-outline-variant) 50%, transparent) !important; }
+
+/* Scrollbar */
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  vertical-align: middle;
+  line-height: 1;
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c7c7c7;
-  border-radius: 99px;
+  background: var(--color-outline-variant);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-outline);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+}
+
+.dark .glass {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+}
+
+.dark .glass-panel {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+}
+
+@layer utilities {
+  .transition-smooth {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .font-headline {
+    font-family: "Manrope", sans-serif;
+  }
 }
