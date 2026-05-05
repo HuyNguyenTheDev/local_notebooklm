@@ -172,11 +172,11 @@ export default function HomePage() {
         </div>
 
         {/* Create Workspace + Upload Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mb-12 animate-rise">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-6 animate-rise">
           {/* Main Upload / Create area */}
           <div className="md:col-span-8 bg-surface-container-lowest dark:bg-slate-900 rounded-xxl p-1.5 group transition-all duration-300 hover:shadow-[0_12px_40px_rgba(42,52,57,0.06)]">
             <div
-              className={`border-2 border-dashed rounded-[1.2rem] flex flex-col items-center justify-center p-10 text-center transition-colors ${
+              className={`border-2 border-dashed rounded-[1.2rem] flex flex-col items-center justify-center p-6 text-center transition-colors ${
                 isDragging
                   ? "border-primary bg-primary/5"
                   : "border-outline-variant/30 group-hover:border-primary/40"

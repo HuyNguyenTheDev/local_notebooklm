@@ -99,23 +99,6 @@ export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) 
         </div>
 
         {/* Filter chips */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-          <button
-            type="button"
-            className="px-4 py-1.5 rounded-full bg-primary text-on-primary text-xs font-bold shadow-sm shadow-primary/20 shrink-0"
-          >
-            {t("allSources")}
-          </button>
-          {[t("filterPDFs"), t("filterText"), t("filterMarkdown")].map((chip) => (
-            <button
-              key={chip}
-              type="button"
-              className="px-4 py-1.5 rounded-full bg-surface-container dark:bg-slate-800 text-on-surface-variant text-xs font-medium hover:bg-surface-container-high transition-colors shrink-0"
-            >
-              {chip}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Content area */}
