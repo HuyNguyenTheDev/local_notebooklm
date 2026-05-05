@@ -9,6 +9,12 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useUi();
+  const showSidebar = false;
+
+  // Temporarily hide left sidebar. Set to true to enable it again.
+  if (!showSidebar) {
+    return null;
+  }
 
   const workspaceMatch = pathname.match(/^\/workspace\/([^/]+)/);
   const workspaceName = workspaceMatch ? decodeURIComponent(workspaceMatch[1]) : null;

@@ -18,9 +18,9 @@ type UiContextType = {
 const translations: Record<Language, Dict> = {
   en: {
     // App
-    appTitle: "Local NotebookLM",
+    appTitle: "KnowledgeLLM",
     aiActive: "AI Active",
-    searchPlaceholder: "Search sources...",
+    searchPlaceholder: "Search notebook...",
     // Workspace
     pickWorkspace: "Your Workspaces",
     createWorkspace: "Create Workspace",
@@ -30,6 +30,7 @@ const translations: Record<Language, Dict> = {
     noWorkspace: "No workspaces yet. Create one to begin.",
     workspace: "Workspace",
     workspaceCreatedAt: "Created",
+    workspaceExistsBackendAlert: "Workspace name already exists in backend.",
     deleteWorkspace: "Delete workspace",
     newWorkspace: "New Workspace",
     yourWorkspaces: "Your Workspaces",
@@ -109,9 +110,9 @@ const translations: Record<Language, Dict> = {
   },
   vi: {
     // App
-    appTitle: "Local NotebookLM",
+    appTitle: "KnowledgeLLM",
     aiActive: "AI Đang hoạt động",
-    searchPlaceholder: "Tìm kiếm nguồn...",
+    searchPlaceholder: "Tìm kiếm notebook...",
     // Workspace
     pickWorkspace: "Workspace của bạn",
     createWorkspace: "Tạo Workspace",
@@ -121,6 +122,7 @@ const translations: Record<Language, Dict> = {
     noWorkspace: "Chưa có workspace. Hãy tạo workspace để bắt đầu.",
     workspace: "Workspace",
     workspaceCreatedAt: "Tạo ngày",
+    workspaceExistsBackendAlert: "Tên workspace này đã có trong backend.",
     deleteWorkspace: "Xóa workspace",
     newWorkspace: "Workspace mới",
     yourWorkspaces: "Workspace của bạn",

@@ -160,9 +160,9 @@ export default function ChatBox({ workspaceId }: ChatBoxProps) {
             <span className="material-symbols-outlined text-[20px]">send</span>
           </button>
         </form>
-        <p className="text-[10px] text-on-surface-variant mt-2 text-center">
+        {/* <p className="text-[10px] text-on-surface-variant mt-2 text-center">
           {t("chatInputHint")}
-        </p>
+        </p> */}
       </div>
     </div>
   );

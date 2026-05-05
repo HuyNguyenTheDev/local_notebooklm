@@ -47,6 +47,30 @@ export async function getDocuments(workspaceId: string): Promise<DocumentPreview
   return response.json();
 }
 
+export async function createWorkspace(workspaceId: string): Promise<WorkspacePreview> {
+  const query = new URLSearchParams({ workspace_id: workspaceId }).toString();
+  const response = await fetch(`${API_BASE_URL}/documents/workspaces?${query}`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to create workspace");
+  }
+
+  return response.json();
+}
+
+export async function searchWorkspaces(query: string): Promise<WorkspacePreview[]> {
+  const q = new URLSearchParams({ q: query }).toString();
+  const response = await fetch(`${API_BASE_URL}/documents/workspaces/search?${q}`, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error("Failed to search workspaces");
+  }
+
+  return response.json();
+}
+
 export async function getWorkspaces(): Promise<WorkspacePreview[]> {
   const response = await fetch(`${API_BASE_URL}/documents/workspaces`, { cache: "no-store" });
 

@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.models.document import DocumentPreview, WorkspacePreview
-from backend.services.knowledge_store import delete_document, delete_workspace, list_document_previews, list_workspaces, rename_document
+from backend.services.knowledge_store import create_workspace, delete_document, delete_workspace, list_document_previews, list_workspaces, rename_document, search_workspaces
 
 
 router = APIRouter(prefix="/documents", tags=["knowledge"])
@@ -12,6 +12,16 @@ router = APIRouter(prefix="/documents", tags=["knowledge"])
 @router.get("/workspaces", response_model=List[WorkspacePreview])
 def get_workspaces() -> List[WorkspacePreview]:
     return list_workspaces()
+
+
+@router.post("/workspaces", response_model=WorkspacePreview)
+def create_workspace_endpoint(workspace_id: str = Query(...)) -> WorkspacePreview:
+    return create_workspace(workspace_id)
+
+
+@router.get("/workspaces/search", response_model=List[WorkspacePreview])
+def search_workspaces_endpoint(q: str = Query(default="")) -> List[WorkspacePreview]:
+    return search_workspaces(q)
 
 
 @router.get("", response_model=List[DocumentPreview])

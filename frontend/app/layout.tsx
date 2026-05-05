@@ -9,6 +9,15 @@ import "../styles/globals.css";
 export const metadata: Metadata = {
   title: "Local NotebookLM",
   description: "Upload docs, build knowledge, and chat with your local assistant",
+  icons: {
+    icon: [
+      { url: "/notebooklm.png", sizes: "32x32", type: "image/png" },
+      { url: "/notebooklm.png", sizes: "64x64", type: "image/png" },
+      { url: "/notebooklm.png", sizes: "192x192", type: "image/png" },
+    ],
+    shortcut: "/notebooklm.png",
+    apple: [{ url: "/notebooklm.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

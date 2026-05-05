@@ -21,7 +21,7 @@ export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) 
 
   const [documents, setDocuments] = useState<DocumentPreview[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState<ActiveView>("sources");
+  const [activeView, setActiveView] = useState<ActiveView>("chat");
   const [showUploadModal, setShowUploadModal] = useState(false);
 
   const loadDocuments = useCallback(async () => {
