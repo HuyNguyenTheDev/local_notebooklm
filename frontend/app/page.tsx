@@ -7,6 +7,7 @@ import { WorkspacePreview, createWorkspace as createWorkspaceApi, deleteWorkspac
 import { useUi } from "@/lib/ui";
 
 type WorkspaceItem = {
+  id?: string;
   name: string;
   createdAt: string;
   icon: string;
@@ -39,17 +40,20 @@ export default function HomePage() {
   const [workspaceAlert, setWorkspaceAlert] = useState<string | null>(null);
   const [menuWorkspace, setMenuWorkspace] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const mergeWorkspaceSources = (localItems: WorkspaceItem[], remoteItems: WorkspacePreview[]) => {
     const merged = new Map<string, WorkspaceItem>();
     localItems.forEach((item) => merged.set(item.name, item));
     remoteItems.forEach((item) => {
-      if (!merged.has(item.workspace_id)) {
-        merged.set(item.workspace_id, {
-          name: item.workspace_id,
-          createdAt: item.created_at,
-          icon: pickIcon(item.workspace_id),
+      const existing = merged.get(item.name);
+      if (!existing || !existing.id) {
+        merged.set(item.name, {
+          id: item.id,
+          name: item.name,
+          createdAt: existing?.createdAt ?? item.created_at,
+          icon: existing?.icon ?? pickIcon(item.name),
         });
       }
     });
@@ -116,7 +120,7 @@ export default function HomePage() {
       setWorkspaces(merged);
       window.localStorage.setItem("workspaces", JSON.stringify(merged));
 
-      const existsInBackend = remote.some((w) => normalize(w.workspace_id) === normalizedCleaned);
+      const existsInBackend = remote.some((w) => normalize(w.name) === normalizedCleaned);
       const existsInLocal = merged.some((w) => normalize(w.name) === normalizedCleaned);
 
       if (existsInBackend || existsInLocal) {
@@ -130,22 +134,37 @@ export default function HomePage() {
       }
     }
 
-    const nw: WorkspaceItem = { name: cleaned, createdAt: new Date().toISOString(), icon: pickIcon() };
-    const updated = [nw, ...workspaces];
-    setWorkspaces(updated);
-    window.localStorage.setItem("workspaces", JSON.stringify(updated));
     setWorkspaceName("");
-    void createWorkspaceApi(cleaned);
-    router.push(`/workspace/${encodeURIComponent(cleaned)}`);
+    try {
+      const created = await createWorkspaceApi(cleaned);
+      const nw: WorkspaceItem = {
+        id: created.id,
+        name: created.name,
+        createdAt: created.created_at,
+        icon: pickIcon(created.name),
+      };
+      const updated = [nw, ...workspaces];
+      setWorkspaces(updated);
+      window.localStorage.setItem("workspaces", JSON.stringify(updated));
+      router.push(`/workspace/${encodeURIComponent(created.name)}`);
+    } catch {
+      const nw: WorkspaceItem = { name: cleaned, createdAt: new Date().toISOString(), icon: pickIcon() };
+      const updated = [nw, ...workspaces];
+      setWorkspaces(updated);
+      window.localStorage.setItem("workspaces", JSON.stringify(updated));
+      router.push(`/workspace/${encodeURIComponent(cleaned)}`);
+    }
   };
 
   const openWorkspace = (workspace: WorkspaceItem) => {
     router.push(`/workspace/${encodeURIComponent(workspace.name)}`);
   };
 
-  const deleteWorkspace = async (name: string) => {
-    await deleteWorkspaceApi(name);
-    const updated = workspaces.filter((w) => w.name !== name);
+  const deleteWorkspace = async (workspace: WorkspaceItem) => {
+    if (workspace.id) {
+      await deleteWorkspaceApi(workspace.id);
+    }
+    const updated = workspaces.filter((w) => w.name !== workspace.name);
     setWorkspaces(updated);
     window.localStorage.setItem("workspaces", JSON.stringify(updated));
     setMenuWorkspace(null);
@@ -293,7 +312,7 @@ export default function HomePage() {
                     <div className="absolute right-4 top-12 z-20 min-w-[160px] overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow-xl animate-slideIn">
                       <button
                         type="button"
-                        onClick={(e) => { e.stopPropagation(); void deleteWorkspace(workspace.name); }}
+                        onClick={(e) => { e.stopPropagation(); void deleteWorkspace(workspace); }}
                         className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-error transition-colors hover:bg-red-50 dark:hover:bg-red-950/30"
                       >
                         <span className="material-symbols-outlined text-[16px]">delete</span>
@@ -331,7 +350,10 @@ export default function HomePage() {
               {/* Ghost add card */}
               <button
                 type="button"
-                onClick={() => document.querySelector<HTMLInputElement>('input[placeholder]')?.focus()}
+                onClick={() => {
+                  setWorkspaceAlert(null);
+                  setShowCreateModal(true);
+                }}
                 className="group border-2 border-dashed border-outline-variant/30 rounded-3xl p-5 flex flex-col items-center justify-center gap-3 hover:border-primary/50 hover:bg-primary/5 transition-all min-h-[160px]"
               >
                 <div className="w-10 h-10 rounded-full bg-surface-container dark:bg-slate-800 flex items-center justify-center group-hover:bg-primary-container transition-colors">
@@ -345,6 +367,74 @@ export default function HomePage() {
               </button>
             </div>
           </section>
+        )}
+
+        {showCreateModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fadeIn"
+            onClick={() => setShowCreateModal(false)}
+          >
+            <div
+              className="bg-white dark:bg-slate-900 rounded-xxl shadow-2xl p-6 w-full max-w-lg mx-4 animate-rise"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-lg font-headline">{t("createWorkspace")}</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg hover:bg-surface-container-low transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[20px]">close</span>
+                </button>
+              </div>
+
+              <div
+                className={`border-2 border-dashed rounded-[1.2rem] flex flex-col items-center justify-center p-6 text-center transition-colors ${
+                  workspaceAlert
+                    ? "border-primary bg-primary/5"
+                    : "border-outline-variant/30 group-hover:border-primary/40"
+                }`}
+              >
+                <div className="w-16 h-16 rounded-full bg-surface-container-low dark:bg-slate-800 flex items-center justify-center mb-4">
+                  <span className="material-symbols-outlined text-3xl text-primary">add</span>
+                </div>
+                <h4 className="text-lg font-bold font-headline mb-2">{t("newWorkspace")}</h4>
+                <p className="text-on-surface-variant text-sm mb-6">{t("enterNameHint")}</p>
+
+                <form
+                  onSubmit={(event) => {
+                    void createWorkspace(event);
+                    setShowCreateModal(false);
+                  }}
+                  className="flex gap-3 w-full max-w-md"
+                >
+                  <input
+                    autoFocus
+                    value={workspaceName}
+                    onChange={(e) => {
+                      setWorkspaceName(e.target.value);
+                      if (workspaceAlert) setWorkspaceAlert(null);
+                    }}
+                    placeholder={t("workspaceName")}
+                    className="flex-1 rounded-xl border border-outline-variant/50 bg-surface-container-low dark:bg-slate-800 px-4 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-on-surface-variant"
+                  />
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 bg-primary text-on-primary rounded-xl font-bold hover:bg-primary-dim transition-all shadow-lg shadow-primary/20 text-sm"
+                  >
+                    {t("createWorkspace")}
+                  </button>
+                </form>
+
+                {workspaceAlert && (
+                  <div className="mt-3 w-full max-w-md px-6 py-2.5 bg-primary text-on-primary rounded-xl font-bold transition-all shadow-lg shadow-primary/20 text-sm text-center">
+                    {workspaceAlert}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Footer meta */}

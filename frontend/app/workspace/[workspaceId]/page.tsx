@@ -306,7 +306,7 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
           <div>
             <div className="flex items-start gap-3 mb-3">
               <div className="p-3 bg-surface-container-low dark:bg-slate-800 rounded-2xl group-hover:bg-primary-container transition-colors shrink-0">
-                <span className="material-symbols-outlined text-primary text-[24px]">{getDocIcon(doc.type)}</span>
+                <span className="material-symbols-outlined text-primary text-[24px]">{getDocIcon(doc.file_type)}</span>
               </div>
               <div className="flex-1 min-w-0 pr-7">
                 {editingId === doc.id ? (
@@ -326,8 +326,8 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
                   </h3>
                 )}
                 <div className="flex gap-1.5 mt-2 flex-wrap">
-                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${getBadgeColors(doc.type)}`}>
-                    {doc.type.toUpperCase()}
+                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${getBadgeColors(doc.file_type)}`}>
+                    {doc.file_type.toUpperCase()}
                   </span>
                   <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-surface-container text-on-surface-variant">
                     {t("indexed")}

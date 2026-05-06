@@ -89,17 +89,17 @@ export default function TopBar() {
             <div className="absolute top-full mt-1.5 left-0 w-full bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden z-50">
               {searchResults.map((ws) => (
                 <button
-                  key={ws.workspace_id}
+                  key={ws.id}
                   type="button"
                   onClick={() => {
-                    router.push(`/workspace/${encodeURIComponent(ws.workspace_id)}`);
+                    router.push(`/workspace/${encodeURIComponent(ws.name)}`);
                     setSearchQuery("");
                     setSearchOpen(false);
                   }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left hover:bg-surface-container-low dark:hover:bg-slate-800 transition-colors"
                 >
                   <span className="material-symbols-outlined text-[16px] text-on-surface-variant shrink-0">description</span>
-                  <span className="truncate text-on-surface dark:text-slate-200">{ws.workspace_id}</span>
+                  <span className="truncate text-on-surface dark:text-slate-200">{ws.name}</span>
                 </button>
               ))}
             </div>

@@ -91,7 +91,7 @@ export default function KnowledgeList({ workspaceId, documents, onDeleted }: Kno
                 {/* Icon */}
                 <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 flex items-center justify-center shrink-0 shadow-sm">
                   <span className="material-symbols-outlined text-primary text-[16px]">
-                    {FILE_ICONS[doc.type.toLowerCase()] ?? "description"}
+                    {FILE_ICONS[doc.file_type.toLowerCase()] ?? "description"}
                   </span>
                 </div>
 
@@ -116,8 +116,8 @@ export default function KnowledgeList({ workspaceId, documents, onDeleted }: Kno
                     </p>
                   )}
                   <div className="flex items-center gap-1.5 mt-1">
-                    <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${BADGE_COLORS[doc.type.toLowerCase()] ?? "bg-surface-container text-on-surface-variant"}`}>
-                      {doc.type.toUpperCase()}
+                    <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${BADGE_COLORS[doc.file_type.toLowerCase()] ?? "bg-surface-container text-on-surface-variant"}`}>
+                      {doc.file_type.toUpperCase()}
                     </span>
                     <span className="text-[10px] text-on-surface-variant">{formatDate(doc.created_at)}</span>
                   </div>

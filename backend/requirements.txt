@@ -5,3 +5,16 @@ pydantic==2.11.7
 pypdf==5.9.0
 httpx==0.28.1
 requests==2.31.0
+python-dotenv==1.0.1
+
+# Supabase & PostgreSQL
+supabase==2.15.2
+asyncpg==0.30.0
+psycopg[binary,pool]==3.2.6
+
+# pgvector Python adapter
+pgvector==0.3.6
+
+# Chunking & tokenization
+langchain-text-splitters==0.3.8
+tiktoken==0.9.0

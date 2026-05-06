@@ -1,8 +1,9 @@
 export type DocumentPreview = {
   id: string;
+  workspace_id: string;
   filename: string;
-  type: string;
-  preview: string;
+  file_type: string;
+  parse_status: string;
   created_at: string;
 };
 
@@ -12,7 +13,8 @@ export type ChatMessage = {
 };
 
 export type WorkspacePreview = {
-  workspace_id: string;
+  id: string;
+  name: string;
   created_at: string;
 };
 
@@ -47,10 +49,11 @@ export async function getDocuments(workspaceId: string): Promise<DocumentPreview
   return response.json();
 }
 
-export async function createWorkspace(workspaceId: string): Promise<WorkspacePreview> {
-  const query = new URLSearchParams({ workspace_id: workspaceId }).toString();
-  const response = await fetch(`${API_BASE_URL}/documents/workspaces?${query}`, {
+export async function createWorkspace(name: string): Promise<WorkspacePreview> {
+  const response = await fetch(`${API_BASE_URL}/documents/workspaces`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
   });
 
   if (!response.ok) {
