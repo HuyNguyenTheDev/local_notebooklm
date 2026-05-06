@@ -7,6 +7,14 @@ export type DocumentPreview = {
   created_at: string;
 };
 
+export type DocumentContent = {
+  id: string;
+  filename: string;
+  file_type?: string;
+  parse_status?: string;
+  raw_text: string;
+};
+
 export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
@@ -44,6 +52,16 @@ export async function getDocuments(workspaceId: string): Promise<DocumentPreview
 
   if (!response.ok) {
     throw new Error("Failed to fetch documents");
+  }
+
+  return response.json();
+}
+
+export async function getDocumentContent(fileId: string): Promise<DocumentContent> {
+  const response = await fetch(`${API_BASE_URL}/documents/${fileId}`, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch document content");
   }
 
   return response.json();

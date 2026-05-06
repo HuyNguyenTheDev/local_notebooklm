@@ -2,9 +2,9 @@
 services/file_parser.py — Parse file thanh raw text.
 
 Chien luoc:
-  1. Neu PDF_PARSE_API_URL duoc set -> goi API ngoai.
-  2. Fallback -> pypdf local.
-  3. txt / md -> doc thang.
+    1. PDF: uu tien pypdf local.
+    2. PDF: fallback goi OCR API neu pypdf fail/empty.
+    3. txt / md -> doc thang.
 """
 
 from pathlib import Path
@@ -30,13 +30,22 @@ async def parse_file_async(file_path: Path) -> str:
 
 
 async def _parse_pdf_async(file_path: Path) -> str:
+    # 1) Uu tien pypdf local
+    try:
+        local_text = _parse_pdf_local(file_path)
+        if local_text.strip():
+            return local_text
+    except Exception as exc:
+        print(f"[WARN] pypdf failed ({exc}), fallback to OCR API")
+
+    # 2) Fallback OCR API neu co
     if PDF_PARSE_API_URL:
         try:
             return await _call_pdf_api(file_path)
         except Exception as exc:
-            print(f"[WARN] PDF API failed ({exc}), falling back to pypdf")
+            print(f"[WARN] PDF OCR API failed ({exc})")
 
-    return _parse_pdf_local(file_path)
+    return ""
 
 
 async def _call_pdf_api(file_path: Path) -> str:

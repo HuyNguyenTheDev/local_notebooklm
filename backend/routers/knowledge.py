@@ -102,6 +102,22 @@ async def get_file_status(file_id: UUID) -> dict:
     }
 
 
+@router.get("/{file_id}")
+async def get_document_content(file_id: UUID) -> dict:
+    """Trả về nội dung đã parse của file."""
+    row = await get_file(file_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return {
+        "id": str(file_id),
+        "filename": row["filename"],
+        "file_type": row.get("file_type"),
+        "parse_status": row.get("parse_status"),
+        "raw_text": row.get("raw_text") or "",
+    }
+
+
 @router.delete("/{file_id}")
 async def remove_document(file_id: UUID, workspace_id: str = Query(...)) -> dict:
     resolved = await resolve_workspace_id(workspace_id)

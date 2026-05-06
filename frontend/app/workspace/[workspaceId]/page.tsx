@@ -202,9 +202,15 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [viewing, setViewing] = useState<{
+    id: string;
+    filename: string;
+    content: string;
+    loading: boolean;
+  } | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { deleteDocument, renameDocument } = require("@/lib/api") as typeof import("@/lib/api");
+  const { deleteDocument, renameDocument, getDocumentContent } = require("@/lib/api") as typeof import("@/lib/api");
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
@@ -239,6 +245,23 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
     onDeleted();
   };
 
+  const handleViewContent = async (doc: DocumentPreview) => {
+    setOpenMenuId(null);
+    setViewing({ id: doc.id, filename: doc.filename, content: "", loading: true });
+    try {
+      const data = await getDocumentContent(doc.id);
+      setViewing({
+        id: doc.id,
+        filename: data.filename || doc.filename,
+        content: data.raw_text || "",
+        loading: false,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load content";
+      setViewing({ id: doc.id, filename: doc.filename, content: message, loading: false });
+    }
+  };
+
   if (documents.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -262,7 +285,8 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
       {documents.map((doc, index) => (
         <article
           key={doc.id}
@@ -282,6 +306,19 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
             </button>
             {openMenuId === doc.id && (
               <div className="absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow-xl animate-slideIn">
+                <button
+                  type="button"
+                  onClick={() => void handleViewContent(doc)}
+                  disabled={doc.parse_status !== "done"}
+                  className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors ${
+                    doc.parse_status === "done"
+                      ? "text-on-surface hover:bg-surface-container-low"
+                      : "text-on-surface-variant/60 cursor-not-allowed"
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">visibility</span>
+                  View content
+                </button>
                 <button
                   type="button"
                   onClick={() => { setEditingId(doc.id); setEditingName(doc.filename); setOpenMenuId(null); }}
@@ -382,6 +419,40 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
           {t("dragDropHint")}
         </p>
       </button>
-    </div>
+      </div>
+
+      {viewing && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setViewing(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-xxl shadow-2xl p-6 w-full max-w-3xl mx-4 animate-rise"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg font-headline truncate">{viewing.filename}</h3>
+              <button
+                type="button"
+                onClick={() => setViewing(null)}
+                className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg hover:bg-surface-container-low transition-colors"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <div className="border-2 border-dashed rounded-[1.2rem] p-5 bg-surface-container-lowest dark:bg-slate-950/40">
+              {viewing.loading ? (
+                <div className="text-sm text-on-surface-variant">Loading content...</div>
+              ) : (
+                <pre className="text-xs text-on-surface whitespace-pre-wrap max-h-[60vh] overflow-y-auto">
+{viewing.content || "No content available."}
+                </pre>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
