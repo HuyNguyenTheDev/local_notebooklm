@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 
-import { DocumentPreview, deleteDocument, renameDocument } from "@/lib/api";
+import {
+  DocumentChunk,
+  DocumentPreview,
+  deleteDocument,
+  getDocumentChunks,
+  getDocumentContent,
+  renameDocument,
+} from "@/lib/api";
 import { useUi } from "@/lib/ui";
 
 type KnowledgeListProps = {
@@ -23,12 +30,22 @@ const BADGE_COLORS: Record<string, string> = {
   md: "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400",
 };
 
+const FINAL_PARSE_STATUSES = new Set(["done", "failed"]);
+
 export default function KnowledgeList({ workspaceId, documents, onDeleted }: KnowledgeListProps) {
   const { language, t } = useUi();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<{
+    id: string;
+    filename: string;
+    mode: "content" | "chunks";
+    content: string;
+    chunks: DocumentChunk[];
+    loading: boolean;
+  } | null>(null);
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
@@ -40,6 +57,47 @@ export default function KnowledgeList({ workspaceId, documents, onDeleted }: Kno
     await deleteDocument(id, workspaceId);
     setOpenMenuId(null);
     onDeleted();
+  };
+
+  const canViewContent = (doc: DocumentPreview) => FINAL_PARSE_STATUSES.has(doc.parse_status);
+  const canViewChunks = (doc: DocumentPreview) => doc.parse_status === "done";
+
+  const handleViewContent = async (doc: DocumentPreview) => {
+    setOpenMenuId(null);
+    setViewing({ id: doc.id, filename: doc.filename, mode: "content", content: "", chunks: [], loading: true });
+    try {
+      const data = await getDocumentContent(doc.id);
+      setViewing({
+        id: doc.id,
+        filename: data.filename || doc.filename,
+        mode: "content",
+        content: data.raw_text || "",
+        chunks: [],
+        loading: false,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load content";
+      setViewing({ id: doc.id, filename: doc.filename, mode: "content", content: message, chunks: [], loading: false });
+    }
+  };
+
+  const handleViewChunks = async (doc: DocumentPreview) => {
+    setOpenMenuId(null);
+    setViewing({ id: doc.id, filename: doc.filename, mode: "chunks", content: "", chunks: [], loading: true });
+    try {
+      const chunks = await getDocumentChunks(doc.id);
+      setViewing({
+        id: doc.id,
+        filename: doc.filename,
+        mode: "chunks",
+        content: "",
+        chunks,
+        loading: false,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load chunks";
+      setViewing({ id: doc.id, filename: doc.filename, mode: "content", content: message, chunks: [], loading: false });
+    }
   };
 
   const handleRenameStart = (id: string, currentName: string) => {
@@ -61,6 +119,7 @@ export default function KnowledgeList({ workspaceId, documents, onDeleted }: Kno
   };
 
   return (
+    <>
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center gap-2 mb-3 shrink-0">
@@ -156,7 +215,25 @@ export default function KnowledgeList({ workspaceId, documents, onDeleted }: Kno
                         </svg>
                       </button>
                       {openMenuId === doc.id && (
-                        <div className="absolute right-0 z-50 mt-1 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow-xl animate-slideIn">
+                        <div className="absolute right-0 z-50 mt-1 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 shadow-xl animate-slideIn">
+                          <button
+                            type="button"
+                            onClick={() => void handleViewContent(doc)}
+                            disabled={!canViewContent(doc)}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-on-surface hover:bg-surface-container-low transition-colors disabled:text-on-surface-variant/60 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">visibility</span>
+                            View content
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleViewChunks(doc)}
+                            disabled={!canViewChunks(doc)}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-on-surface hover:bg-surface-container-low transition-colors disabled:text-on-surface-variant/60 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">view_list</span>
+                            View chunks
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleRenameStart(doc.id, doc.filename)}
@@ -184,5 +261,73 @@ export default function KnowledgeList({ workspaceId, documents, onDeleted }: Kno
         )}
       </div>
     </div>
+
+    {viewing && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fadeIn"
+        onClick={() => setViewing(null)}
+      >
+        <div
+          className="bg-white dark:bg-slate-900 rounded-xxl shadow-2xl p-6 w-full max-w-3xl mx-4 animate-rise"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="min-w-0">
+              <h3 className="font-bold text-lg font-headline truncate">{viewing.filename}</h3>
+              {viewing.mode === "chunks" && !viewing.loading && (
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  {viewing.chunks.length} chunks
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setViewing(null)}
+              className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg hover:bg-surface-container-low transition-colors"
+            >
+              <span className="material-symbols-outlined text-[20px]">close</span>
+            </button>
+          </div>
+
+          <div className="border-2 border-dashed rounded-[1.2rem] p-5 bg-surface-container-lowest dark:bg-slate-950/40">
+            {viewing.loading ? (
+              <div className="text-sm text-on-surface-variant">
+                Loading {viewing.mode === "chunks" ? "chunks" : "content"}...
+              </div>
+            ) : viewing.mode === "chunks" ? (
+              <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-1">
+                {viewing.chunks.length > 0 ? (
+                  viewing.chunks.map((chunk) => (
+                    <section
+                      key={chunk.id}
+                      className="rounded-xl border border-outline-variant/20 bg-white/70 dark:bg-slate-900/70 p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <span className="text-xs font-bold text-primary">
+                          Chunk #{chunk.chunk_index + 1}
+                        </span>
+                        <span className="text-[11px] text-on-surface-variant shrink-0">
+                          {chunk.token_count ?? 0} tokens
+                        </span>
+                      </div>
+                      <pre className="text-xs text-on-surface whitespace-pre-wrap leading-relaxed">
+{chunk.content}
+                      </pre>
+                    </section>
+                  ))
+                ) : (
+                  <div className="text-sm text-on-surface-variant">No chunks available.</div>
+                )}
+              </div>
+            ) : (
+              <pre className="text-xs text-on-surface whitespace-pre-wrap max-h-[60vh] overflow-y-auto">
+{viewing.content || "No content available."}
+              </pre>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

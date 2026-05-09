@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ChatMessage, sendChat } from "@/lib/api";
+import { ChatMessage, ChatSession, getChatMessages, getChatSessions, sendChat } from "@/lib/api";
 import { useUi } from "@/lib/ui";
 import MessageBubble from "@/components/MessageBubble";
 
@@ -14,6 +14,9 @@ export default function ChatBox({ workspaceId }: ChatBoxProps) {
   const { t } = useUi();
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -22,6 +25,63 @@ export default function ChatBox({ workspaceId }: ChatBoxProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
+
+  const loadSessionMessages = useCallback(async (sessionId: string) => {
+    setIsLoadingHistory(true);
+    try {
+      const data = await getChatMessages(sessionId);
+      setMessages(data);
+      setActiveSessionId(sessionId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load chat history";
+      setMessages([{ role: "assistant", content: `Unable to load chat history: ${message}` }]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, []);
+
+  const refreshSessions = useCallback(async () => {
+    const data = await getChatSessions(workspaceId);
+    setSessions(data);
+    return data;
+  }, [workspaceId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadInitialHistory = async () => {
+      setMessages([]);
+      setActiveSessionId(null);
+      try {
+        const data = await getChatSessions(workspaceId);
+        if (cancelled) return;
+        setSessions(data);
+        if (data.length > 0) {
+          const latestSessionId = data[0].id;
+          const history = await getChatMessages(latestSessionId);
+          if (cancelled) return;
+          setMessages(history);
+          setActiveSessionId(latestSessionId);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.error(err);
+        setSessions([]);
+      }
+    };
+
+    void loadInitialHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId]);
+
+  const handleNewChat = () => {
+    setQuestion("");
+    setMessages([]);
+    setActiveSessionId(null);
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -33,8 +93,10 @@ export default function ChatBox({ workspaceId }: ChatBoxProps) {
 
     try {
       setIsTyping(true);
-      const answer = await sendChat(trimmed, workspaceId);
-      setMessages((prev) => [...prev, { role: "assistant", content: answer }]);
+      const data = await sendChat(trimmed, workspaceId, activeSessionId);
+      setActiveSessionId(data.session_id);
+      setMessages((prev) => [...prev, { role: "assistant", content: data.answer }]);
+      void refreshSessions();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Chat error";
       setMessages((prev) => [
@@ -62,20 +124,48 @@ export default function ChatBox({ workspaceId }: ChatBoxProps) {
           <h2 className="font-bold text-on-surface text-sm font-headline">{t("chatTitle")}</h2>
           <p className="text-[11px] text-on-surface-variant">{t("chatHint")}</p>
         </div>
-        {hasMessages && (
-          <button
-            type="button"
-            onClick={() => setMessages([])}
-            className="text-[11px] font-medium text-on-surface-variant hover:text-error transition-colors px-2 py-1 rounded-lg hover:bg-surface-container-low"
-          >
-            {t("clearChat")}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {sessions.length > 0 && (
+            <select
+              value={activeSessionId ?? ""}
+              onChange={(event) => {
+                const nextSessionId = event.target.value;
+                if (!nextSessionId) {
+                  handleNewChat();
+                  return;
+                }
+                void loadSessionMessages(nextSessionId);
+              }}
+              className="max-w-32 rounded-lg bg-surface-container-low dark:bg-slate-800 px-2 py-1 text-[11px] font-medium text-on-surface-variant outline-none hover:text-on-surface"
+              disabled={isTyping || isLoadingHistory}
+            >
+              <option value="">New chat</option>
+              {sessions.map((session, index) => (
+                <option key={session.id} value={session.id}>
+                  Chat {sessions.length - index}
+                </option>
+              ))}
+            </select>
+          )}
+          {hasMessages && (
+            <button
+              type="button"
+              onClick={handleNewChat}
+              className="text-[11px] font-medium text-on-surface-variant hover:text-error transition-colors px-2 py-1 rounded-lg hover:bg-surface-container-low"
+            >
+              {t("clearChat")}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-gradient-to-b from-surface-container-lowest to-surface-container-low dark:from-slate-900 dark:to-slate-950">
-        {!hasMessages ? (
+        {isLoadingHistory ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-xs font-medium text-on-surface-variant">Loading chat history...</div>
+          </div>
+        ) : !hasMessages ? (
           <div className="flex h-full flex-col items-center justify-center py-12 text-center">
             <div className="w-16 h-16 rounded-2xl bg-primary-container flex items-center justify-center mb-4">
               <span

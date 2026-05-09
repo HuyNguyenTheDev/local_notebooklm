@@ -1,8 +1,5 @@
 """
-models/document.py — Pydantic schemas (cập nhật cho Supabase).
-
-WorkspacePreview: dùng UUID id thay vì workspace_id string cũ.
-DocumentPreview : thêm parse_status để frontend biết tiến độ ingest.
+models/document.py - Pydantic schemas for workspace, documents, and chat.
 """
 
 from typing import Optional
@@ -34,7 +31,7 @@ class DocumentPreview(BaseModel):
     workspace_id: UUID
     filename: str
     file_type: str
-    parse_status: str           # 'pending' | 'processing' | 'done' | 'failed'
+    parse_status: str
     preview: Optional[str] = None
     created_at: str
 
@@ -45,9 +42,30 @@ class DocumentPreview(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str
-    workspace_id: str          # UUID hoặc name của workspace
+    workspace_id: str
+    session_id: Optional[UUID] = None
 
 
 class ChatResponse(BaseModel):
     answer: str
-    sources: list[str] = []     # danh sách chunk content dùng làm context
+    session_id: UUID
+    sources: list[str] = []
+
+
+class ChatSessionCreate(BaseModel):
+    workspace_id: str
+
+
+class ChatSessionPreview(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    created_at: str
+
+
+class ChatMessageRecord(BaseModel):
+    id: UUID
+    session_id: UUID
+    role: str
+    content: str
+    source_chunks: list[UUID] = []
+    created_at: str

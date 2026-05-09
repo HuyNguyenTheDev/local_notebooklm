@@ -40,6 +40,7 @@ DATABASE_URL: str = (
 
 # ── External APIs ─────────────────────────────────────────────────────────
 LLM_API_URL: str = os.getenv("LLM_API_URL", "http://127.0.0.1:8001")
+LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
 EMBEDDING_API_URL: str = os.getenv("EMBEDDING_API_URL", "")   # Optional khi chưa setup
 PDF_PARSE_API_URL: str = os.getenv("PDF_PARSE_API_URL", "")   # Optional
 

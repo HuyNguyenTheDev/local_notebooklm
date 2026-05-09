@@ -1,27 +1,80 @@
 """
-routers/chat.py — RAG chat endpoint.
-
-POST /chat
-  1. Embed câu hỏi → query_vector
-  2. Vector similarity search (pgvector) trong workspace → top-K chunks
-  3. Ghép chunks thành context
-  4. Gọi LLM (polling) → answer
-  5. Trả về answer + sources
+routers/chat.py - RAG chat endpoints with persisted sessions/messages.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from typing import List
+from uuid import UUID
 
-from backend.models.document import ChatRequest, ChatResponse
+from fastapi import APIRouter, HTTPException, Query
+
+from backend.models.document import (
+    ChatMessageRecord,
+    ChatRequest,
+    ChatResponse,
+    ChatSessionCreate,
+    ChatSessionPreview,
+)
 from backend.services.embedding import embed_query
 from backend.services.llm_client import ask_llm
-from backend.services.vector_store import resolve_workspace_id, similarity_search
+from backend.services.vector_store import (
+    create_chat_session,
+    delete_chat_session,
+    get_chat_session,
+    insert_chat_message,
+    list_chat_messages,
+    list_chat_sessions,
+    resolve_workspace_id,
+    similarity_search,
+)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 _TOP_K = 5
-_SIMILARITY_THRESHOLD = 0.3   # cosine similarity tối thiểu (0.0–1.0)
+_SIMILARITY_THRESHOLD = 0.3
+
+
+@router.get("/sessions", response_model=List[ChatSessionPreview])
+async def get_chat_sessions(workspace_id: str = Query(...)) -> List[ChatSessionPreview]:
+    resolved = await resolve_workspace_id(workspace_id)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    rows = await list_chat_sessions(resolved)
+    return [_row_to_session(row) for row in rows]
+
+
+@router.post("/sessions", response_model=ChatSessionPreview, status_code=201)
+async def create_chat_session_endpoint(body: ChatSessionCreate) -> ChatSessionPreview:
+    resolved = await resolve_workspace_id(body.workspace_id)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    row = await create_chat_session(resolved)
+    return _row_to_session(row)
+
+
+@router.get("/sessions/{session_id}/messages", response_model=List[ChatMessageRecord])
+async def get_session_messages(session_id: UUID) -> List[ChatMessageRecord]:
+    session = await get_chat_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    rows = await list_chat_messages(session_id)
+    return [_row_to_message(row) for row in rows]
+
+
+@router.delete("/sessions/{session_id}")
+async def remove_chat_session(session_id: UUID, workspace_id: str = Query(...)) -> dict:
+    resolved = await resolve_workspace_id(workspace_id)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    removed = await delete_chat_session(session_id, resolved)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    return {"status": "deleted", "id": str(session_id)}
 
 
 @router.post("", response_model=ChatResponse)
@@ -30,11 +83,13 @@ async def chat_with_documents(payload: ChatRequest) -> ChatResponse:
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-    resolved = await resolve_workspace_id(payload.workspace_id)
-    if resolved is None:
+    resolved_workspace_id = await resolve_workspace_id(payload.workspace_id)
+    if resolved_workspace_id is None:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    # --- Bước 1: Embed câu hỏi ---
+    session_id = await _resolve_or_create_session(payload.session_id, resolved_workspace_id)
+    history_rows = await list_chat_messages(session_id)
+
     try:
         query_vector = await embed_query(question)
     except Exception as exc:
@@ -43,25 +98,81 @@ async def chat_with_documents(payload: ChatRequest) -> ChatResponse:
             detail=f"Embedding service unavailable: {exc}",
         )
 
-    # --- Bước 2: Vector similarity search ---
     results = await similarity_search(
-        workspace_id=resolved,
+        workspace_id=resolved_workspace_id,
         query_embedding=query_vector,
         top_k=_TOP_K,
         similarity_threshold=_SIMILARITY_THRESHOLD,
     )
 
-    # --- Bước 3: Build context ---
     if results:
-        # Sắp xếp theo similarity DESC (đã sorted từ query)
-        context_parts = [r.content for r in results]
-        context = "\n\n---\n\n".join(context_parts)
-        sources = context_parts
+        context = _build_context([result.content for result in results])
+        sources = [result.content for result in results]
+        source_chunk_ids = [result.chunk_id for result in results]
     else:
         context = "Không tìm thấy tài liệu liên quan trong workspace này."
         sources = []
+        source_chunk_ids = []
 
-    # --- Bước 4: Gọi LLM ---
-    answer = await ask_llm(question=question, context=context)
+    await insert_chat_message(
+        session_id=session_id,
+        role="user",
+        content=question,
+        source_chunks=[],
+    )
 
-    return ChatResponse(answer=answer, sources=sources)
+    answer = await ask_llm(
+        question=question,
+        context=context,
+        history=history_rows,
+    )
+
+    await insert_chat_message(
+        session_id=session_id,
+        role="assistant",
+        content=answer,
+        source_chunks=source_chunk_ids,
+    )
+
+    return ChatResponse(answer=answer, session_id=session_id, sources=sources)
+
+
+async def _resolve_or_create_session(
+    session_id: UUID | None,
+    workspace_id: UUID,
+) -> UUID:
+    if session_id is None:
+        session = await create_chat_session(workspace_id)
+        return UUID(str(session["id"]))
+
+    session = await get_chat_session(session_id)
+    if not session or UUID(str(session["workspace_id"])) != workspace_id:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    return session_id
+
+
+def _build_context(chunks: list[str]) -> str:
+    return "\n".join(
+        f"[Chunk {index + 1}]: {chunk}"
+        for index, chunk in enumerate(chunks)
+    )
+
+
+def _row_to_session(row: dict) -> ChatSessionPreview:
+    return ChatSessionPreview(
+        id=row["id"],
+        workspace_id=row["workspace_id"],
+        created_at=row["created_at"],
+    )
+
+
+def _row_to_message(row: dict) -> ChatMessageRecord:
+    return ChatMessageRecord(
+        id=row["id"],
+        session_id=row["session_id"],
+        role=row["role"],
+        content=row["content"],
+        source_chunks=row.get("source_chunks") or [],
+        created_at=row["created_at"],
+    )

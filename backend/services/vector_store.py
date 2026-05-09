@@ -184,6 +184,86 @@ async def rename_file(file_id: UUID, workspace_id: UUID, new_filename: str) -> b
 
 
 # ---------------------------------------------------------------------------
+# Chat sessions / messages
+# ---------------------------------------------------------------------------
+
+
+async def create_chat_session(workspace_id: UUID) -> dict:
+    """Create a chat session for a workspace."""
+    sb = get_supabase_client()
+    result = (
+        sb.table("chat_sessions")
+        .insert({"workspace_id": str(workspace_id)})
+        .execute()
+    )
+    return result.data[0]
+
+
+async def get_chat_session(session_id: UUID) -> Optional[dict]:
+    """Get one chat session by ID."""
+    sb = get_supabase_client()
+    result = sb.table("chat_sessions").select("*").eq("id", str(session_id)).execute()
+    return result.data[0] if result.data else None
+
+
+async def list_chat_sessions(workspace_id: UUID) -> list[dict]:
+    """List chat sessions in a workspace, newest first."""
+    sb = get_supabase_client()
+    result = (
+        sb.table("chat_sessions")
+        .select("*")
+        .eq("workspace_id", str(workspace_id))
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return result.data
+
+
+async def delete_chat_session(session_id: UUID, workspace_id: UUID) -> bool:
+    """Delete a chat session in a workspace."""
+    sb = get_supabase_client()
+    result = (
+        sb.table("chat_sessions")
+        .delete()
+        .eq("id", str(session_id))
+        .eq("workspace_id", str(workspace_id))
+        .execute()
+    )
+    return bool(result.data)
+
+
+async def insert_chat_message(
+    session_id: UUID,
+    role: str,
+    content: str,
+    source_chunks: Optional[list[UUID]] = None,
+) -> dict:
+    """Insert one chat message."""
+    sb = get_supabase_client()
+    payload = {
+        "session_id": str(session_id),
+        "role": role,
+        "content": content,
+        "source_chunks": [str(chunk_id) for chunk_id in (source_chunks or [])],
+    }
+    result = sb.table("messages").insert(payload).execute()
+    return result.data[0]
+
+
+async def list_chat_messages(session_id: UUID) -> list[dict]:
+    """List messages in one session, oldest first."""
+    sb = get_supabase_client()
+    result = (
+        sb.table("messages")
+        .select("*")
+        .eq("session_id", str(session_id))
+        .order("created_at")
+        .execute()
+    )
+    return result.data
+
+
+# ---------------------------------------------------------------------------
 # Chunks
 # ---------------------------------------------------------------------------
 
@@ -257,27 +337,36 @@ async def similarity_search(
     Dùng SQL function `search_chunks` đã tạo sẵn trên Supabase,
     fallback sang raw SQL nếu function chưa tồn tại.
     """
-    pool = await get_db_pool()
     embedding_str = f"[{','.join(str(v) for v in query_embedding)}]"
 
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT
-                id        AS chunk_id,
-                file_id,
-                content,
-                1 - (embedding <=> $1::vector) AS similarity
-            FROM chunks
-            WHERE workspace_id = $2
-              AND 1 - (embedding <=> $1::vector) > $3
-            ORDER BY embedding <=> $1::vector
-            LIMIT $4
-            """,
-            embedding_str,
-            str(workspace_id),
-            similarity_threshold,
-            top_k,
+    try:
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT
+                    id        AS chunk_id,
+                    file_id,
+                    content,
+                    1 - (embedding <=> $1::vector) AS similarity
+                FROM chunks
+                WHERE workspace_id = $2
+                  AND 1 - (embedding <=> $1::vector) > $3
+                ORDER BY embedding <=> $1::vector
+                LIMIT $4
+                """,
+                embedding_str,
+                str(workspace_id),
+                similarity_threshold,
+                top_k,
+            )
+    except Exception as exc:
+        print(f"[WARN] direct pgvector search failed, falling back to Supabase RPC: {exc}")
+        return await _similarity_search_via_rpc(
+            workspace_id=workspace_id,
+            embedding_str=embedding_str,
+            top_k=top_k,
+            similarity_threshold=similarity_threshold,
         )
 
     return [
@@ -289,3 +378,36 @@ async def similarity_search(
         )
         for row in rows
     ]
+
+
+async def _similarity_search_via_rpc(
+    workspace_id: UUID,
+    embedding_str: str,
+    top_k: int,
+    similarity_threshold: float,
+) -> list[ChunkSearchResult]:
+    """Fallback vector search through Supabase REST/RPC."""
+    try:
+        sb = get_supabase_client()
+        result = sb.rpc(
+            "search_chunks",
+            {
+                "query_embedding": embedding_str,
+                "target_workspace_id": str(workspace_id),
+                "match_count": top_k,
+                "similarity_threshold": similarity_threshold,
+            },
+        ).execute()
+
+        return [
+            ChunkSearchResult(
+                chunk_id=row["chunk_id"],
+                file_id=row["file_id"],
+                content=row["content"],
+                similarity=row["similarity"],
+            )
+            for row in (result.data or [])
+        ]
+    except Exception as exc:
+        print(f"[ERROR] Supabase RPC search_chunks failed: {exc}")
+        return []

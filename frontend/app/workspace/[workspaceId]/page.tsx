@@ -14,6 +14,8 @@ type WorkspaceEntryPageProps = {
 
 type ActiveView = "sources" | "chat";
 
+const FINAL_PARSE_STATUSES = new Set(["done", "failed"]);
+
 export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) {
   const { t } = useUi();
   const { workspaceId: rawWorkspaceId } = use(params);
@@ -24,19 +26,30 @@ export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) 
   const [activeView, setActiveView] = useState<ActiveView>("chat");
   const [showUploadModal, setShowUploadModal] = useState(false);
 
-  const loadDocuments = useCallback(async () => {
-    setLoading(true);
+  const loadDocuments = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const data = await getDocuments(workspaceId);
       setDocuments(data);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [workspaceId]);
 
   useEffect(() => {
     void loadDocuments();
   }, [loadDocuments]);
+
+  useEffect(() => {
+    const hasActiveIngest = documents.some((doc) => !FINAL_PARSE_STATUSES.has(doc.parse_status));
+    if (!hasActiveIngest) return;
+
+    const timerId = window.setInterval(() => {
+      void loadDocuments(false);
+    }, 2000);
+
+    return () => window.clearInterval(timerId);
+  }, [documents, loadDocuments]);
 
   const handleUploaded = () => {
     setShowUploadModal(false);
@@ -234,6 +247,9 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
     return map[type.toLowerCase()] ?? "bg-surface-container text-on-surface-variant";
   };
 
+  const canViewContent = (doc: DocumentPreview) => FINAL_PARSE_STATUSES.has(doc.parse_status);
+  const canViewChunks = (doc: DocumentPreview) => doc.parse_status === "done";
+
   const handleDelete = async (id: string) => {
     await deleteDocument(id, workspaceId);
     setOpenMenuId(null);
@@ -332,9 +348,9 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
                 <button
                   type="button"
                   onClick={() => void handleViewContent(doc)}
-                  disabled={doc.parse_status !== "done"}
+                  disabled={!canViewContent(doc)}
                   className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors ${
-                    doc.parse_status === "done"
+                    canViewContent(doc)
                       ? "text-on-surface hover:bg-surface-container-low"
                       : "text-on-surface-variant/60 cursor-not-allowed"
                   }`}
@@ -345,7 +361,7 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
                 <button
                   type="button"
                   onClick={() => void handleViewChunks(doc)}
-                  disabled={doc.parse_status !== "done"}
+                  disabled={!canViewChunks(doc)}
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors text-on-surface hover:bg-surface-container-low disabled:text-on-surface-variant/60 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                 >
                   <span className="material-symbols-outlined text-[16px]">view_list</span>

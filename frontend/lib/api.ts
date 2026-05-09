@@ -26,8 +26,24 @@ export type DocumentChunk = {
 };
 
 export type ChatMessage = {
+  id?: string;
+  session_id?: string;
   role: "user" | "assistant";
   content: string;
+  source_chunks?: string[];
+  created_at?: string;
+};
+
+export type ChatSession = {
+  id: string;
+  workspace_id: string;
+  created_at: string;
+};
+
+export type ChatResponse = {
+  answer: string;
+  session_id: string;
+  sources: string[];
 };
 
 export type WorkspacePreview = {
@@ -154,13 +170,61 @@ export async function renameDocument(id: string, newFilename: string, workspaceI
   }
 }
 
-export async function sendChat(question: string, workspaceId: string): Promise<string> {
+export async function getChatSessions(workspaceId: string): Promise<ChatSession[]> {
+  const query = new URLSearchParams({ workspace_id: workspaceId }).toString();
+  const response = await fetch(`${API_BASE_URL}/chat/sessions?${query}`, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch chat sessions");
+  }
+
+  return response.json();
+}
+
+export async function createChatSession(workspaceId: string): Promise<ChatSession> {
+  const response = await fetch(`${API_BASE_URL}/chat/sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ workspace_id: workspaceId }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to create chat session");
+  }
+
+  return response.json();
+}
+
+export async function getChatMessages(sessionId: string): Promise<ChatMessage[]> {
+  const response = await fetch(`${API_BASE_URL}/chat/sessions/${sessionId}/messages`, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch chat messages");
+  }
+
+  return response.json();
+}
+
+export async function deleteChatSession(sessionId: string, workspaceId: string): Promise<void> {
+  const query = new URLSearchParams({ workspace_id: workspaceId }).toString();
+  const response = await fetch(`${API_BASE_URL}/chat/sessions/${sessionId}?${query}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to delete chat session");
+  }
+}
+
+export async function sendChat(question: string, workspaceId: string, sessionId?: string | null): Promise<ChatResponse> {
   const response = await fetch(`${API_BASE_URL}/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ question, workspace_id: workspaceId }),
+    body: JSON.stringify({ question, workspace_id: workspaceId, session_id: sessionId ?? undefined }),
   });
 
   if (!response.ok) {
@@ -168,6 +232,5 @@ export async function sendChat(question: string, workspaceId: string): Promise<s
     throw new Error(`Chat failed: ${detail}`);
   }
 
-  const data = await response.json();
-  return data.answer;
+  return response.json();
 }

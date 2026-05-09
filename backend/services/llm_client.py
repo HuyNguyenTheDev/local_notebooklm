@@ -1,86 +1,99 @@
 """
-services/llm_client.py — Goi LLM API voi co che polling.
+services/llm_client.py - Worker LLM client for RAG chat.
 
-Giu nguyen polling mechanism tu test_llm_api.py:
-  POST /generate -> {"job_id": "..."}
-  GET  /result/{job_id} -> {"status": "done"|"pending"|"error", "result": "..."}
+Expected Worker API:
+  POST {LLM_API_URL}
+  Authorization: Bearer {LLM_API_KEY}
+  JSON: {"prompt": "...", "systemPrompt": "..."}
+  Response: {"response": "..."} or any JSON/string fallback.
 """
 
-import asyncio
+from __future__ import annotations
+
+from typing import Iterable
 
 import httpx
 
-from backend.config import LLM_API_URL
-
-# Chuan hoa: bo trailing slash va /generate /chat
-_base = LLM_API_URL.rstrip("/")
-if _base.endswith("/generate"):
-    _base = _base[: -len("/generate")]
-elif _base.endswith("/chat"):
-    _base = _base[: -len("/chat")]
-LLM_BASE_URL: str = _base
-
-_POLL_INTERVAL = 1.5
-_MAX_POLLS = 120
+from backend.config import LLM_API_KEY, LLM_API_URL
 
 
-async def ask_llm(question: str, context: str) -> str:
-    """
-    Gui cau hoi + context len LLM API (polling mode).
-    Prompt duoc xay dung theo format RAG chuan.
-    """
-    prompt = _build_rag_prompt(question, context)
-
-    job_id = await _submit_job(prompt)
-    if not job_id:
-        return "Khong the ket noi toi LLM server. Kiem tra LLM_API_URL trong .env"
-
-    return await _poll_result(job_id)
+SYSTEM_PROMPT = """Bạn là trợ lý AI IT. Hãy trả lời câu hỏi của người dùng dựa trên các đoạn văn bản được cung cấp và lịch sử hội thoại.
+Nếu thông tin không có trong context, hãy nói rõ là bạn không tìm thấy thông tin đó.
+Không được bịa đặt thông tin ngoài context và lịch sử hội thoại."""
 
 
-def _build_rag_prompt(question: str, context: str) -> str:
-    if context and context.strip():
-        return (
-            "Dua tren cac doan van ban tham khao sau day, hay tra loi cau hoi.\n"
-            "Neu khong tim thay thong tin lien quan trong ngu canh, hay noi ro dieu do.\n\n"
-            f"=== NGU CANH ===\n{context}\n\n"
-            f"=== CAU HOI ===\n{question}\n\n"
-            "=== TRA LOI ==="
-        )
-    return question
+async def ask_llm(
+    question: str,
+    context: str,
+    history: Iterable[dict] | None = None,
+) -> str:
+    """Send a RAG prompt to the configured Worker LLM API."""
+    if not LLM_API_URL:
+        return "Chưa cấu hình LLM_API_URL trong .env."
 
+    prompt = _build_rag_prompt(question=question, context=context, history=history or [])
+    headers = {"Content-Type": "application/json"}
+    if LLM_API_KEY:
+        headers["Authorization"] = f"Bearer {LLM_API_KEY}"
 
-async def _submit_job(prompt: str) -> str | None:
-    """POST /generate -> lay job_id."""
-    payload = {"text": prompt}
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            response = await client.post(f"{LLM_BASE_URL}/generate", json=payload)
+        async with httpx.AsyncClient(timeout=90) as client:
+            response = await client.post(
+                LLM_API_URL,
+                headers=headers,
+                json={
+                    "prompt": prompt,
+                    "systemPrompt": SYSTEM_PROMPT,
+                },
+            )
             response.raise_for_status()
-            data = response.json()
-            return data.get("job_id")
     except Exception as exc:
-        print(f"[ERROR] _submit_job: {exc}")
-        return None
+        print(f"[ERROR] ask_llm worker request failed: {exc}")
+        return f"Không thể kết nối tới LLM API: {exc}"
+
+    return _extract_response(response)
 
 
-async def _poll_result(job_id: str) -> str:
-    """GET /result/{job_id} voi polling cho den khi done."""
-    for poll_num in range(_MAX_POLLS):
-        await asyncio.sleep(_POLL_INTERVAL)
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                response = await client.get(f"{LLM_BASE_URL}/result/{job_id}")
-                response.raise_for_status()
-                data = response.json()
+def _build_rag_prompt(question: str, context: str, history: Iterable[dict]) -> str:
+    history_text = _build_history(history)
+    safe_context = context.strip() if context.strip() else "Không có context liên quan."
 
-            status = data.get("status")
-            if status == "done":
-                return data.get("result", "Khong co ket qua tu LLM.")
-            elif status == "error":
-                return f"LLM server bao loi: {data.get('result', 'Unknown error')}"
+    return f"""Context:
+{safe_context}
 
-        except Exception as exc:
-            print(f"[WARN] poll #{poll_num + 1}: {exc}")
+Lịch sử hội thoại:
+{history_text}
 
-    return f"Timeout: LLM khong phan hoi sau {_MAX_POLLS * _POLL_INTERVAL:.0f} giay."
+Câu hỏi: {question}"""
+
+
+def _build_history(history: Iterable[dict]) -> str:
+    lines: list[str] = []
+    for message in history:
+        role = message.get("role", "")
+        content = str(message.get("content", "")).strip()
+        if not content:
+            continue
+        label = "Người dùng" if role == "user" else "Trợ lý"
+        lines.append(f"{label}: {content}")
+
+    return "\n".join(lines[-12:]) if lines else "Chưa có lịch sử."
+
+
+def _extract_response(response: httpx.Response) -> str:
+    try:
+        data = response.json()
+    except ValueError:
+        return response.text
+
+    if isinstance(data, dict):
+        for key in ("response", "answer", "result", "content"):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        return str(data)
+
+    if isinstance(data, str):
+        return data
+
+    return str(data)
