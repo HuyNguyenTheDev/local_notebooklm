@@ -198,43 +198,38 @@ async def insert_chunks(
 ) -> None:
     """
     Bulk insert chunks với embedding vào bảng `chunks`.
-    Dùng asyncpg trực tiếp để COPY hiệu quả hơn nhiều lần so với REST API.
+    Dùng Supabase REST API (HTTPS) thay vì asyncpg để tránh lỗi port bị chặn.
     """
-    pool = await get_db_pool()
-    records = []
-    for idx, (content, embedding, token_count) in enumerate(
-        zip(chunks, embeddings, token_counts)
-    ):
-        records.append(
-            (
-                str(uuid.uuid4()),          # id
-                str(file_id),              # file_id
-                str(workspace_id),         # workspace_id
-                idx,                       # chunk_index
-                content,                   # content
-                token_count,               # token_count
-                f"[{','.join(str(v) for v in embedding)}]",  # embedding text
-                embed_model,               # embed_model
-            )
+    sb = get_supabase_client()
+    records = [
+        {
+            "id": str(uuid.uuid4()),
+            "file_id": str(file_id),
+            "workspace_id": str(workspace_id),
+            "chunk_index": idx,
+            "content": content,
+            "token_count": token_count,
+            "embedding": f"[{','.join(str(v) for v in embedding)}]",
+            "embed_model": embed_model,
+        }
+        for idx, (content, embedding, token_count) in enumerate(
+            zip(chunks, embeddings, token_counts)
         )
+    ]
 
-    async with pool.acquire() as conn:
-        await conn.executemany(
-            """
-            INSERT INTO chunks (id, file_id, workspace_id, chunk_index, content,
-                                token_count, embedding, embed_model)
-            VALUES ($1, $2, $3, $4, $5, $6, $7::vector, $8)
-            ON CONFLICT (file_id, chunk_index) DO NOTHING
-            """,
-            records,
-        )
+    # Supabase REST upsert theo batch 100 để tránh request quá lớn
+    batch_size = 100
+    for i in range(0, len(records), batch_size):
+        sb.table("chunks").upsert(
+            records[i : i + batch_size],
+            on_conflict="file_id,chunk_index",
+        ).execute()
 
 
 async def delete_chunks_by_file(file_id: UUID) -> None:
     """Xóa tất cả chunks của một file."""
-    pool = await get_db_pool()
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM chunks WHERE file_id = $1", str(file_id))
+    sb = get_supabase_client()
+    sb.table("chunks").delete().eq("file_id", str(file_id)).execute()
 
 
 async def similarity_search(

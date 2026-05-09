@@ -14,7 +14,6 @@ Pipeline:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from uuid import UUID
 
@@ -60,18 +59,22 @@ async def _run_ingest(file_id: UUID, workspace_id: UUID, stored_path: Path) -> N
             return
 
         # --- Bước 2: Lưu raw_text vào DB ---
-        await update_file_text(file_id, raw_text, parse_status="done")
-        await update_file_status(file_id, "done")
-        parse_done = True
-
-        # Với txt/md: chỉ cần đọc vào và mark done
-        if not is_pdf:
+        if is_pdf:
+            # PDF: lưu raw_text nhưng chưa mark done (chǝ chunk+embed xong mới done)
+            await update_file_text(file_id, raw_text, parse_status="processing")
+        else:
+            # txt/md: không cần chunk/embed, mark done luôn
+            await update_file_text(file_id, raw_text, parse_status="done")
+            await update_file_status(file_id, "done")
             return
+
+        parse_done = True
 
         # --- Bước 3: Chunk ---
         chunks = split_text(raw_text)
         if not chunks:
             print(f"[WARN] ingest_file {file_id}: no chunks generated")
+            await update_file_status(file_id, "done")
             return
 
         # --- Bước 4: Embed (batch) ---
@@ -91,8 +94,10 @@ async def _run_ingest(file_id: UUID, workspace_id: UUID, stored_path: Path) -> N
             embed_model=EMBED_MODEL,
         )
 
+        # Mark done chỉ sau khi toàn bộ pipeline thành công
+        await update_file_text(file_id, raw_text, parse_status="done")
+        await update_file_status(file_id, "done")
         print(f"[INFO] ingest_file {file_id}: {len(chunks)} chunks embedded & stored.")
     except Exception as exc:
         print(f"[ERROR] ingest_file {file_id} (post-parse): {exc}")
-        if not parse_done:
-            await update_file_status(file_id, "failed")
+        await update_file_status(file_id, "failed")

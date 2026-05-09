@@ -2,9 +2,8 @@
 services/chunker.py — Chia raw text thành các chunk có kích thước hợp lý.
 
 Dùng RecursiveCharacterTextSplitter từ langchain-text-splitters:
-  - chunk_size   = CHUNK_SIZE env (default 512 tokens)
-  - chunk_overlap = CHUNK_OVERLAP env (default 64 tokens)
-  - Dùng tiktoken (cl100k_base) để đếm token chính xác.
+    - chunk_size   = CHUNK_SIZE env
+    - chunk_overlap = CHUNK_OVERLAP env
 """
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -13,9 +12,8 @@ from backend.config import CHUNK_OVERLAP, CHUNK_SIZE
 
 
 def _get_splitter() -> RecursiveCharacterTextSplitter:
-    """Khởi tạo splitter dùng tiktoken để đếm token."""
-    return RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-        encoding_name="cl100k_base",      # GPT-4 tokenizer, gần với bge-m3
+    """Khởi tạo splitter theo số ký tự (phù hợp với snippet chuẩn)."""
+    return RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
         separators=["\n\n", "\n", "。", ".", " ", ""],
