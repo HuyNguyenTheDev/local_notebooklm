@@ -5,7 +5,7 @@ import { use, useCallback, useEffect, useState } from "react";
 import ChatBox from "@/components/ChatBox";
 import FileUpload from "@/components/FileUpload";
 import KnowledgeList from "@/components/KnowledgeList";
-import { DocumentPreview, getDocuments } from "@/lib/api";
+import { DocumentChunk, DocumentPreview, getDocuments } from "@/lib/api";
 import { useUi } from "@/lib/ui";
 
 type WorkspaceEntryPageProps = {
@@ -205,12 +205,14 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
   const [viewing, setViewing] = useState<{
     id: string;
     filename: string;
+    mode: "content" | "chunks";
     content: string;
+    chunks: DocumentChunk[];
     loading: boolean;
   } | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { deleteDocument, renameDocument, getDocumentContent } = require("@/lib/api") as typeof import("@/lib/api");
+  const { deleteDocument, renameDocument, getDocumentContent, getDocumentChunks } = require("@/lib/api") as typeof import("@/lib/api");
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
@@ -247,18 +249,39 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
 
   const handleViewContent = async (doc: DocumentPreview) => {
     setOpenMenuId(null);
-    setViewing({ id: doc.id, filename: doc.filename, content: "", loading: true });
+    setViewing({ id: doc.id, filename: doc.filename, mode: "content", content: "", chunks: [], loading: true });
     try {
       const data = await getDocumentContent(doc.id);
       setViewing({
         id: doc.id,
         filename: data.filename || doc.filename,
+        mode: "content",
         content: data.raw_text || "",
+        chunks: [],
         loading: false,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load content";
-      setViewing({ id: doc.id, filename: doc.filename, content: message, loading: false });
+      setViewing({ id: doc.id, filename: doc.filename, mode: "content", content: message, chunks: [], loading: false });
+    }
+  };
+
+  const handleViewChunks = async (doc: DocumentPreview) => {
+    setOpenMenuId(null);
+    setViewing({ id: doc.id, filename: doc.filename, mode: "chunks", content: "", chunks: [], loading: true });
+    try {
+      const chunks = await getDocumentChunks(doc.id);
+      setViewing({
+        id: doc.id,
+        filename: doc.filename,
+        mode: "chunks",
+        content: "",
+        chunks,
+        loading: false,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load chunks";
+      setViewing({ id: doc.id, filename: doc.filename, mode: "content", content: message, chunks: [], loading: false });
     }
   };
 
@@ -318,6 +341,15 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
                 >
                   <span className="material-symbols-outlined text-[16px]">visibility</span>
                   View content
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleViewChunks(doc)}
+                  disabled={doc.parse_status !== "done"}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors text-on-surface hover:bg-surface-container-low disabled:text-on-surface-variant/60 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  <span className="material-symbols-outlined text-[16px]">view_list</span>
+                  View chunks
                 </button>
                 <button
                   type="button"
@@ -431,7 +463,14 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-lg font-headline truncate">{viewing.filename}</h3>
+              <div className="min-w-0">
+                <h3 className="font-bold text-lg font-headline truncate">{viewing.filename}</h3>
+                {viewing.mode === "chunks" && !viewing.loading && (
+                  <p className="text-xs text-on-surface-variant mt-0.5">
+                    {viewing.chunks.length} chunks
+                  </p>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setViewing(null)}
@@ -443,7 +482,34 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
 
             <div className="border-2 border-dashed rounded-[1.2rem] p-5 bg-surface-container-lowest dark:bg-slate-950/40">
               {viewing.loading ? (
-                <div className="text-sm text-on-surface-variant">Loading content...</div>
+                <div className="text-sm text-on-surface-variant">
+                  Loading {viewing.mode === "chunks" ? "chunks" : "content"}...
+                </div>
+              ) : viewing.mode === "chunks" ? (
+                <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-1">
+                  {viewing.chunks.length > 0 ? (
+                    viewing.chunks.map((chunk) => (
+                      <section
+                        key={chunk.id}
+                        className="rounded-xl border border-outline-variant/20 bg-white/70 dark:bg-slate-900/70 p-4"
+                      >
+                        <div className="flex items-center justify-between gap-3 mb-2">
+                          <span className="text-xs font-bold text-primary">
+                            Chunk #{chunk.chunk_index + 1}
+                          </span>
+                          <span className="text-[11px] text-on-surface-variant shrink-0">
+                            {chunk.token_count ?? 0} tokens
+                          </span>
+                        </div>
+                        <pre className="text-xs text-on-surface whitespace-pre-wrap leading-relaxed">
+{chunk.content}
+                        </pre>
+                      </section>
+                    ))
+                  ) : (
+                    <div className="text-sm text-on-surface-variant">No chunks available.</div>
+                  )}
+                </div>
               ) : (
                 <pre className="text-xs text-on-surface whitespace-pre-wrap max-h-[60vh] overflow-y-auto">
 {viewing.content || "No content available."}

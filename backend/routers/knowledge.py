@@ -19,12 +19,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 
+from backend.models.chunk import ChunkRecord
 from backend.models.document import DocumentPreview, WorkspaceCreate, WorkspacePreview
 from backend.services.vector_store import (
     create_workspace,
     delete_file,
     delete_workspace,
     get_file,
+    list_chunks_by_file,
     list_files,
     list_workspaces,
     rename_file,
@@ -116,6 +118,17 @@ async def get_document_content(file_id: UUID) -> dict:
         "parse_status": row.get("parse_status"),
         "raw_text": row.get("raw_text") or "",
     }
+
+
+@router.get("/{file_id}/chunks", response_model=List[ChunkRecord])
+async def get_document_chunks(file_id: UUID) -> List[ChunkRecord]:
+    """Tra ve danh sach chunks da tao cua file."""
+    row = await get_file(file_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    rows = await list_chunks_by_file(file_id)
+    return [ChunkRecord(**r) for r in rows]
 
 
 @router.delete("/{file_id}")

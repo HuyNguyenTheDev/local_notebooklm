@@ -232,6 +232,19 @@ async def delete_chunks_by_file(file_id: UUID) -> None:
     sb.table("chunks").delete().eq("file_id", str(file_id)).execute()
 
 
+async def list_chunks_by_file(file_id: UUID) -> list[dict]:
+    """Lay tat ca chunks cua mot file theo thu tu chunk_index."""
+    sb = get_supabase_client()
+    result = (
+        sb.table("chunks")
+        .select("id, file_id, workspace_id, chunk_index, content, token_count, embed_model")
+        .eq("file_id", str(file_id))
+        .order("chunk_index")
+        .execute()
+    )
+    return result.data
+
+
 async def similarity_search(
     workspace_id: UUID,
     query_embedding: list[float],

@@ -15,6 +15,16 @@ export type DocumentContent = {
   raw_text: string;
 };
 
+export type DocumentChunk = {
+  id: string;
+  file_id: string;
+  workspace_id: string;
+  chunk_index: number;
+  content: string;
+  token_count?: number | null;
+  embed_model?: string | null;
+};
+
 export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
@@ -62,6 +72,16 @@ export async function getDocumentContent(fileId: string): Promise<DocumentConten
 
   if (!response.ok) {
     throw new Error("Failed to fetch document content");
+  }
+
+  return response.json();
+}
+
+export async function getDocumentChunks(fileId: string): Promise<DocumentChunk[]> {
+  const response = await fetch(`${API_BASE_URL}/documents/${fileId}/chunks`, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch document chunks");
   }
 
   return response.json();
