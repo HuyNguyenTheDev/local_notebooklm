@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database import close_db_pool, get_db_pool
 from backend.routers.chat import router as chat_router
+from backend.routers.embeddings import router as embeddings_router
 from backend.routers.knowledge import router as knowledge_router
 from backend.routers.upload import router as upload_router
 
@@ -62,6 +63,7 @@ app.add_middleware(
 app.include_router(upload_router)
 app.include_router(knowledge_router)
 app.include_router(chat_router)
+app.include_router(embeddings_router)
 
 
 @app.get("/")

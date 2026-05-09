@@ -40,47 +40,59 @@ async def ingest_file(file_id: UUID, workspace_id: UUID, stored_path: Path) -> N
         await _run_ingest(file_id, workspace_id, stored_path)
     except Exception as exc:
         print(f"[ERROR] ingest_file {file_id}: {exc}")
-        await update_file_status(file_id, "failed")
-        # Dọn file tạm nếu lỗi
+    finally:
         if stored_path.exists():
             stored_path.unlink(missing_ok=True)
 
 
 async def _run_ingest(file_id: UUID, workspace_id: UUID, stored_path: Path) -> None:
-    # --- Bước 1: Parse ---
-    await update_file_status(file_id, "processing")
-    raw_text = await parse_file_async(stored_path)
+    parse_done = False
+    try:
+        # --- Bước 1: Parse ---
+        await update_file_status(file_id, "processing")
+        raw_text = await parse_file_async(stored_path)
 
-    if not raw_text.strip():
-        await update_file_status(file_id, "failed")
-        return
+        suffix = stored_path.suffix.lower()
+        is_pdf = suffix == ".pdf"
 
-    # --- Bước 2: Lưu raw_text vào DB ---
-    await update_file_text(file_id, raw_text, parse_status="processing")
+        if is_pdf and not raw_text.strip():
+            await update_file_status(file_id, "failed")
+            return
 
-    # --- Bước 3: Chunk ---
-    chunks = split_text(raw_text)
-    if not chunks:
-        await update_file_status(file_id, "failed")
-        return
+        # --- Bước 2: Lưu raw_text vào DB ---
+        await update_file_text(file_id, raw_text, parse_status="done")
+        await update_file_status(file_id, "done")
+        parse_done = True
 
-    # --- Bước 4: Embed (batch) ---
-    embeddings = await embed_texts(chunks)
+        # Với txt/md: chỉ cần đọc vào và mark done
+        if not is_pdf:
+            return
 
-    # --- Bước 5: Token counts ---
-    token_counts = [estimate_token_count(c) for c in chunks]
+        # --- Bước 3: Chunk ---
+        chunks = split_text(raw_text)
+        if not chunks:
+            print(f"[WARN] ingest_file {file_id}: no chunks generated")
+            return
 
-    # --- Bước 6: Xóa chunks cũ (re-ingest support) + Insert mới ---
-    await delete_chunks_by_file(file_id)
-    await insert_chunks(
-        file_id=file_id,
-        workspace_id=workspace_id,
-        chunks=chunks,
-        embeddings=embeddings,
-        token_counts=token_counts,
-        embed_model=EMBED_MODEL,
-    )
+        # --- Bước 4: Embed (batch) ---
+        embeddings = await embed_texts(chunks)
 
-    # --- Bước 7: Đánh dấu done ---
-    await update_file_status(file_id, "done")
-    print(f"[INFO] ingest_file {file_id}: {len(chunks)} chunks embedded & stored.")
+        # --- Bước 5: Token counts ---
+        token_counts = [estimate_token_count(c) for c in chunks]
+
+        # --- Bước 6: Xóa chunks cũ (re-ingest support) + Insert mới ---
+        await delete_chunks_by_file(file_id)
+        await insert_chunks(
+            file_id=file_id,
+            workspace_id=workspace_id,
+            chunks=chunks,
+            embeddings=embeddings,
+            token_counts=token_counts,
+            embed_model=EMBED_MODEL,
+        )
+
+        print(f"[INFO] ingest_file {file_id}: {len(chunks)} chunks embedded & stored.")
+    except Exception as exc:
+        print(f"[ERROR] ingest_file {file_id} (post-parse): {exc}")
+        if not parse_done:
+            await update_file_status(file_id, "failed")

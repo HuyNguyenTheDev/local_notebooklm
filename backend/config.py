@@ -43,6 +43,11 @@ LLM_API_URL: str = os.getenv("LLM_API_URL", "http://127.0.0.1:8001")
 EMBEDDING_API_URL: str = os.getenv("EMBEDDING_API_URL", "")   # Optional khi chưa setup
 PDF_PARSE_API_URL: str = os.getenv("PDF_PARSE_API_URL", "")   # Optional
 
+# ── OpenRouter Embeddings (optional) ─────────────────────────────────────
+OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_SITE_URL: str = os.getenv("OPENROUTER_SITE_URL", "")
+OPENROUTER_SITE_NAME: str = os.getenv("OPENROUTER_SITE_NAME", "")
+
 # ── Chunking ──────────────────────────────────────────────────────────────
 CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "512"))
 CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "64"))

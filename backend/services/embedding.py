@@ -12,9 +12,16 @@ Format response:
 
 import httpx
 
-from backend.config import EMBED_MODEL, EMBEDDING_API_URL, EMBEDDING_DIM
+from backend.config import (
+    EMBED_MODEL,
+    EMBEDDING_API_URL,
+    EMBEDDING_DIM,
+    OPENROUTER_API_KEY,
+    OPENROUTER_SITE_NAME,
+    OPENROUTER_SITE_URL,
+)
 
-_BATCH_SIZE = 32
+_BATCH_SIZE = 16
 
 
 async def embed_texts(texts: list[str]) -> list[list[float]]:
@@ -47,10 +54,35 @@ async def embed_query(text: str) -> list[float]:
 
 async def _call_embed_api(texts: list[str]) -> list[list[float]]:
     """Goi external embedding API va parse ket qua."""
-    payload = {"texts": texts}
+    if not EMBEDDING_API_URL:
+        raise RuntimeError("EMBEDDING_API_URL is not set")
+
+    is_openrouter = "openrouter.ai/api/v1/embeddings" in EMBEDDING_API_URL
+
+    if is_openrouter:
+        if not OPENROUTER_API_KEY:
+            raise RuntimeError("OPENROUTER_API_KEY is not set")
+
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        if OPENROUTER_SITE_URL:
+            headers["HTTP-Referer"] = OPENROUTER_SITE_URL
+        if OPENROUTER_SITE_NAME:
+            headers["X-OpenRouter-Title"] = OPENROUTER_SITE_NAME
+
+        payload = {
+            "model": EMBED_MODEL,
+            "input": texts if len(texts) > 1 else texts[0],
+            "encoding_format": "float",
+        }
+    else:
+        headers = {"Content-Type": "application/json"}
+        payload = {"texts": texts}
 
     async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.post(EMBEDDING_API_URL, json=payload)
+        response = await client.post(EMBEDDING_API_URL, json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()
 
