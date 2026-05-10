@@ -59,14 +59,8 @@ async def _run_ingest(file_id: UUID, workspace_id: UUID, stored_path: Path) -> N
             return
 
         # --- Bước 2: Lưu raw_text vào DB ---
-        if is_pdf:
-            # PDF: lưu raw_text nhưng chưa mark done (chǝ chunk+embed xong mới done)
-            await update_file_text(file_id, raw_text, parse_status="processing")
-        else:
-            # txt/md: không cần chunk/embed, mark done luôn
-            await update_file_text(file_id, raw_text, parse_status="done")
-            await update_file_status(file_id, "done")
-            return
+        # Lưu raw_text nhưng chưa mark done (chỉ chunk+embed xong mới done)
+        await update_file_text(file_id, raw_text, parse_status="processing")
 
         parse_done = True
 

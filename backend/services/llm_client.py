@@ -23,9 +23,9 @@ from backend.config import LLM_API_KEY, LLM_API_URL
 
 
 # ==========================================
-# CẤU HÌNH NGROK DPO MODEL
+# CẤU HÌNH (COMMENTED OUT - DPO MODEL NGROK)
 # ==========================================
-DPO_MODEL_BASE_URL = "https://unamendable-shawanda-unregrettably.ngrok-free.dev"
+# DPO_MODEL_BASE_URL = "https://unamendable-shawanda-unregrettably.ngrok-free.dev"
 
 # ==========================================
 # LLAMA 3.1 SYSTEM PROMPT (OPTIMIZED)
@@ -46,15 +46,15 @@ Lưu ý: Không bao giờ bịa đặt thông tin. Chỉ sử dụng Context + L
 
 
 # ==========================================
-# DPO MODEL INTEGRATION (LLaMA 3.1)
+# DPO MODEL INTEGRATION (LLaMA 3.1) - COMMENTED OUT
 # ==========================================
-
+"""
 async def ask_llm(
     question: str,
     context: str,
     history: Iterable[dict] | None = None,
 ) -> str:
-    """Send a RAG prompt to DPO model via ngrok."""
+    \"\"\"Send a RAG prompt to DPO model via ngrok.\"\"\"
     prompt = _build_rag_prompt(question=question, context=context, history=history or [])
     
     try:
@@ -73,7 +73,7 @@ async def ask_llm(
 
 
 async def _get_job_id(prompt: str) -> str | None:
-    """POST /generate để lấy job_id"""
+    \"\"\"POST /generate để lấy job_id\"\"\"
     try:
         # Chạy request trong thread pool vì requests không async
         loop = asyncio.get_event_loop()
@@ -94,7 +94,7 @@ async def _get_job_id(prompt: str) -> str | None:
 
 
 async def _poll_result(job_id: str, max_polls: int = 60) -> str:
-    """Poll /result/{job_id} cho đến khi done (tối đa 60 lần, mỗi 2 giây)"""
+    \"\"\"Poll /result/{job_id} cho đến khi done (tối đa 60 lần, mỗi 2 giây)\"\"\"
     loop = asyncio.get_event_loop()
     
     for attempt in range(max_polls):
@@ -125,6 +125,7 @@ async def _poll_result(job_id: str, max_polls: int = 60) -> str:
             await asyncio.sleep(2)
     
     return "❌ Poll timeout - model không trả lời kịp thời"
+"""
 
 
 def _build_rag_prompt(question: str, context: str, history: Iterable[dict]) -> str:
@@ -156,9 +157,9 @@ def _build_history(history: Iterable[dict]) -> str:
             continue
         # LLaMA 3.1 responds well to clear role markers
         if role == "user":
-            lines.append(f"👤 Người dùng: {content}")
+            lines.append(f"User: {content}")
         elif role == "assistant":
-            lines.append(f"🤖 Trợ lý: {content}")
+            lines.append(f"Assistant: {content}")
         else:
             lines.append(f"[{role}]: {content}")
 
@@ -169,16 +170,15 @@ def _build_history(history: Iterable[dict]) -> str:
 
 
 # ==========================================
-# LEGACY: OPENROUTER/WORKER API (COMMENTED OUT)
+# CLOUDFLARE LLMs / OPENROUTER / WORKER API
 # ==========================================
 
-"""
-async def ask_llm_legacy(
+async def ask_llm(
     question: str,
     context: str,
     history: Iterable[dict] | None = None,
 ) -> str:
-    '''Send a RAG prompt to the configured Worker LLM API.'''
+    """Send a RAG prompt to the configured Worker LLM API (Cloudflare/OpenRouter)."""
     if not LLM_API_URL:
         return "Chưa cấu hình LLM_API_URL trong .env."
 
@@ -198,14 +198,22 @@ async def ask_llm_legacy(
                 },
             )
             response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        body = exc.response.text[:500] if exc.response is not None else ""
+        print(
+            "[ERROR] ask_llm worker HTTP error: "
+            f"status={exc.response.status_code if exc.response else 'unknown'} body={body}"
+        )
+        return f"Không thể kết nối tới LLM API: HTTP {exc.response.status_code if exc.response else 'unknown'}"
     except Exception as exc:
-        print(f"[ERROR] ask_llm_legacy worker request failed: {exc}")
+        print(f"[ERROR] ask_llm worker request failed: {exc}")
         return f"Không thể kết nối tới LLM API: {exc}"
 
-    return _extract_response_legacy(response)
+    return _extract_response(response)
 
 
-def _extract_response_legacy(response: httpx.Response) -> str:
+def _extract_response(response: httpx.Response) -> str:
+    """Extract response from LLM API."""
     try:
         data = response.json()
     except ValueError:
@@ -222,4 +230,3 @@ def _extract_response_legacy(response: httpx.Response) -> str:
         return data
 
     return str(data)
-"""

@@ -35,6 +35,9 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 _TOP_K = 5
 _SIMILARITY_THRESHOLD = 0.3
+_MAX_CONTEXT_CHARS = 12000
+_MAX_CHUNK_CHARS = 2500
+_MAX_SOURCE_CHARS = 1200
 
 
 @router.get("/sessions", response_model=List[ChatSessionPreview])
@@ -136,7 +139,7 @@ async def chat_with_documents(payload: ChatRequest) -> ChatResponse:
 
     if results:
         context = _build_context([result.content for result in results])
-        sources = [result.content for result in results]
+        sources = [_truncate_text(result.content, _MAX_SOURCE_CHARS) for result in results]
         source_chunk_ids = [result.chunk_id for result in results]
     else:
         context = "Không tìm thấy tài liệu liên quan trong workspace này."
@@ -183,10 +186,36 @@ async def _resolve_or_create_session(
 
 
 def _build_context(chunks: list[str]) -> str:
-    return "\n".join(
-        f"[Chunk {index + 1}]: {chunk}"
-        for index, chunk in enumerate(chunks)
-    )
+    parts: list[str] = []
+    used_chars = 0
+
+    for index, chunk in enumerate(chunks):
+        separator_chars = 1 if parts else 0
+        remaining = _MAX_CONTEXT_CHARS - used_chars - separator_chars
+        if remaining <= 0:
+            break
+
+        label = f"[Chunk {index + 1}]: "
+        content_budget = min(_MAX_CHUNK_CHARS, max(0, remaining - len(label)))
+        if content_budget <= 0:
+            break
+
+        content = _truncate_text(chunk, content_budget)
+        part = f"{label}{content}"
+        parts.append(part)
+        used_chars += len(part) + separator_chars
+
+    return "\n".join(parts)
+
+
+def _truncate_text(text: str, max_chars: int) -> str:
+    cleaned = " ".join((text or "").split())
+    if len(cleaned) <= max_chars:
+        return cleaned
+    if max_chars <= 20:
+        return cleaned[:max_chars]
+    suffix = "... [truncated]"
+    return cleaned[: max_chars - len(suffix)].rstrip() + suffix
 
 
 def _row_to_session(row: dict) -> ChatSessionPreview:

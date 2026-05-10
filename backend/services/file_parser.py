@@ -26,7 +26,9 @@ async def parse_file_async(file_path: Path) -> str:
     if suffix == ".pdf":
         return await _parse_pdf_async(file_path)
 
-    return file_path.read_text(encoding="utf-8", errors="ignore")
+    # Đọc txt/md và lọc bỏ null character (\u0000) để tránh lỗi PostgreSQL
+    text = file_path.read_text(encoding="utf-8", errors="replace")
+    return text.replace("\x00", "")
 
 
 async def _parse_pdf_async(file_path: Path) -> str:

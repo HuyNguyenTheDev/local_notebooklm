@@ -1,9 +1,0 @@
-Traceback (most recent call last):
-  File "D:\BKDN_KHDL\HKI8_BKDN\PBL7\local_notebooklm\backend\services\ingest.py", line 64, in _run_ingest
-    await update_file_text(file_id, raw_text, parse_status="processing")
-  File "D:\BKDN_KHDL\HKI8_BKDN\PBL7\local_notebooklm\backend\services\vector_store.py", line 128, in update_file_text
-    ).eq("id", str(file_id)).execute()
-                             ~~~~~~~^^
-  File "D:\BKDN_KHDL\HKI8_BKDN\PBL7\local_notebooklm\venv_py310\Lib\site-packages\postgrest\_sync\request_builder.py", line 78, in execute
-    raise APIError(dict(json_obj))
-postgrest.exceptions.APIError: {'message': 'unsupported Unicode escape sequence', 'code': '22P05', 'hint': None, 'details': '\\u0000 cannot be converted to text.'}

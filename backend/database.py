@@ -32,7 +32,7 @@ def get_supabase_client():
                 "SUPABASE_URL hoac SUPABASE_SERVICE_ROLE_KEY chua duoc set trong .env"
             )
         _supabase_sync_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        print("[✓] Supabase sync client initialized")
+        print("[OK] Supabase sync client initialized")
     return _supabase_sync_client
 
 
