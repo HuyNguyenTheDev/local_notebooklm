@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 # Ngrok API
-API_URL = "https://97df-34-50-177-236.ngrok-free.app"
+API_URL = "https://4bae-34-126-75-40.ngrok-free.app"
 POLL_INTERVAL = 2  # seconds
 
 
