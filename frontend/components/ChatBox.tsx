@@ -1,21 +1,27 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-import { ChatMessage, ChatSession, getChatMessages, getChatSessions, sendChat } from "@/lib/api";
+import { ChatMessage, getChatMessages, sendChat } from "@/lib/api";
 import { useUi } from "@/lib/ui";
 import MessageBubble from "@/components/MessageBubble";
 
 type ChatBoxProps = {
   workspaceId: string;
+  activeSessionId: string | null;
+  onSessionChange: (sessionId: string | null) => void;
+  onSessionsChanged: () => void;
 };
 
-export default function ChatBox({ workspaceId }: ChatBoxProps) {
+export default function ChatBox({
+  workspaceId,
+  activeSessionId,
+  onSessionChange,
+  onSessionsChanged,
+}: ChatBoxProps) {
   const { t } = useUi();
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -26,61 +32,41 @@ export default function ChatBox({ workspaceId }: ChatBoxProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
 
-  const loadSessionMessages = useCallback(async (sessionId: string) => {
-    setIsLoadingHistory(true);
-    try {
-      const data = await getChatMessages(sessionId);
-      setMessages(data);
-      setActiveSessionId(sessionId);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to load chat history";
-      setMessages([{ role: "assistant", content: `Unable to load chat history: ${message}` }]);
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  }, []);
-
-  const refreshSessions = useCallback(async () => {
-    const data = await getChatSessions(workspaceId);
-    setSessions(data);
-    return data;
-  }, [workspaceId]);
-
   useEffect(() => {
     let cancelled = false;
 
-    const loadInitialHistory = async () => {
-      setMessages([]);
-      setActiveSessionId(null);
+    const loadActiveSession = async () => {
+      setQuestion("");
+      if (!activeSessionId) {
+        setMessages([]);
+        return;
+      }
+
+      setIsLoadingHistory(true);
       try {
-        const data = await getChatSessions(workspaceId);
+        const history = await getChatMessages(activeSessionId);
         if (cancelled) return;
-        setSessions(data);
-        if (data.length > 0) {
-          const latestSessionId = data[0].id;
-          const history = await getChatMessages(latestSessionId);
-          if (cancelled) return;
-          setMessages(history);
-          setActiveSessionId(latestSessionId);
-        }
+        setMessages(history);
       } catch (err) {
         if (cancelled) return;
-        console.error(err);
-        setSessions([]);
+        const message = err instanceof Error ? err.message : "Failed to load chat history";
+        setMessages([{ role: "assistant", content: `Unable to load chat history: ${message}` }]);
+      } finally {
+        if (!cancelled) setIsLoadingHistory(false);
       }
     };
 
-    void loadInitialHistory();
+    void loadActiveSession();
 
     return () => {
       cancelled = true;
     };
-  }, [workspaceId]);
+  }, [activeSessionId]);
 
   const handleNewChat = () => {
     setQuestion("");
     setMessages([]);
-    setActiveSessionId(null);
+    onSessionChange(null);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -94,9 +80,9 @@ export default function ChatBox({ workspaceId }: ChatBoxProps) {
     try {
       setIsTyping(true);
       const data = await sendChat(trimmed, workspaceId, activeSessionId);
-      setActiveSessionId(data.session_id);
+      onSessionChange(data.session_id);
       setMessages((prev) => [...prev, { role: "assistant", content: data.answer }]);
-      void refreshSessions();
+      onSessionsChanged();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Chat error";
       setMessages((prev) => [
@@ -125,28 +111,6 @@ export default function ChatBox({ workspaceId }: ChatBoxProps) {
           <p className="text-[11px] text-on-surface-variant">{t("chatHint")}</p>
         </div>
         <div className="flex items-center gap-2">
-          {sessions.length > 0 && (
-            <select
-              value={activeSessionId ?? ""}
-              onChange={(event) => {
-                const nextSessionId = event.target.value;
-                if (!nextSessionId) {
-                  handleNewChat();
-                  return;
-                }
-                void loadSessionMessages(nextSessionId);
-              }}
-              className="max-w-32 rounded-lg bg-surface-container-low dark:bg-slate-800 px-2 py-1 text-[11px] font-medium text-on-surface-variant outline-none hover:text-on-surface"
-              disabled={isTyping || isLoadingHistory}
-            >
-              <option value="">New chat</option>
-              {sessions.map((session, index) => (
-                <option key={session.id} value={session.id}>
-                  Chat {sessions.length - index}
-                </option>
-              ))}
-            </select>
-          )}
           {hasMessages && (
             <button
               type="button"

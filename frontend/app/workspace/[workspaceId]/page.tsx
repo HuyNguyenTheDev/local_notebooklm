@@ -3,9 +3,18 @@
 import { use, useCallback, useEffect, useState } from "react";
 
 import ChatBox from "@/components/ChatBox";
+import ChatSessionsSidebar from "@/components/ChatSessionsSidebar";
 import FileUpload from "@/components/FileUpload";
 import KnowledgeList from "@/components/KnowledgeList";
-import { DocumentChunk, DocumentPreview, getDocuments } from "@/lib/api";
+import {
+  ChatSession,
+  deleteChatSession,
+  DocumentChunk,
+  DocumentPreview,
+  getChatSessions,
+  getDocuments,
+  renameChatSession,
+} from "@/lib/api";
 import { useUi } from "@/lib/ui";
 
 type WorkspaceEntryPageProps = {
@@ -23,6 +32,9 @@ export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) 
 
   const [documents, setDocuments] = useState<DocumentPreview[]>([]);
   const [loading, setLoading] = useState(true);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
+  const [loadingChatSessions, setLoadingChatSessions] = useState(true);
   const [activeView, setActiveView] = useState<ActiveView>("chat");
   const [showUploadModal, setShowUploadModal] = useState(false);
 
@@ -40,6 +52,39 @@ export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) 
     void loadDocuments();
   }, [loadDocuments]);
 
+  const refreshChatSessions = useCallback(async () => {
+    const data = await getChatSessions(workspaceId);
+    setChatSessions(data);
+    return data;
+  }, [workspaceId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadInitialChatSessions = async () => {
+      setLoadingChatSessions(true);
+      setActiveChatSessionId(null);
+      try {
+        const data = await getChatSessions(workspaceId);
+        if (cancelled) return;
+        setChatSessions(data);
+        setActiveChatSessionId(data[0]?.id ?? null);
+      } catch (err) {
+        if (cancelled) return;
+        console.error(err);
+        setChatSessions([]);
+      } finally {
+        if (!cancelled) setLoadingChatSessions(false);
+      }
+    };
+
+    void loadInitialChatSessions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId]);
+
   useEffect(() => {
     const hasActiveIngest = documents.some((doc) => !FINAL_PARSE_STATUSES.has(doc.parse_status));
     if (!hasActiveIngest) return;
@@ -54,6 +99,29 @@ export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) 
   const handleUploaded = () => {
     setShowUploadModal(false);
     void loadDocuments();
+  };
+
+  const handleCreateChatSession = () => {
+    setActiveChatSessionId(null);
+    setActiveView("chat");
+  };
+
+  const handleRenameChatSession = async (sessionId: string, title: string) => {
+    const session = await renameChatSession(sessionId, workspaceId, title);
+    setChatSessions((prev) =>
+      prev.map((item) => (item.id === session.id ? session : item)),
+    );
+  };
+
+  const handleDeleteChatSession = async (sessionId: string) => {
+    await deleteChatSession(sessionId, workspaceId);
+    setChatSessions((prev) => {
+      const next = prev.filter((item) => item.id !== sessionId);
+      if (activeChatSessionId === sessionId) {
+        setActiveChatSessionId(next[0]?.id ?? null);
+      }
+      return next;
+    });
   };
 
   return (
@@ -139,10 +207,26 @@ export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) 
             )}
           </div>
         ) : (
-          /* Chat view: 2-column chat + knowledge sidebar */
+          /* Chat view: sessions + chat + knowledge sidebar */
           <div className="h-full flex overflow-hidden">
+            <div className="w-72 border-r border-outline-variant/10 overflow-hidden p-4 flex flex-col">
+              <ChatSessionsSidebar
+                sessions={chatSessions}
+                activeSessionId={activeChatSessionId}
+                loading={loadingChatSessions}
+                onNewSession={() => void handleCreateChatSession()}
+                onSelectSession={setActiveChatSessionId}
+                onRenameSession={handleRenameChatSession}
+                onDeleteSession={handleDeleteChatSession}
+              />
+            </div>
             <div className="flex-1 overflow-hidden p-6">
-              <ChatBox workspaceId={workspaceId} />
+              <ChatBox
+                workspaceId={workspaceId}
+                activeSessionId={activeChatSessionId}
+                onSessionChange={setActiveChatSessionId}
+                onSessionsChanged={() => void refreshChatSessions()}
+              />
             </div>
             <div className="w-72 border-l border-outline-variant/10 overflow-hidden p-4 flex flex-col">
               {loading ? null : (

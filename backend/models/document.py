@@ -54,11 +54,18 @@ class ChatResponse(BaseModel):
 
 class ChatSessionCreate(BaseModel):
     workspace_id: str
+    title: Optional[str] = None
+
+
+class ChatSessionUpdate(BaseModel):
+    workspace_id: str
+    title: str
 
 
 class ChatSessionPreview(BaseModel):
     id: UUID
     workspace_id: UUID
+    title: str
     created_at: str
 
 

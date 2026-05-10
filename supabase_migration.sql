@@ -112,8 +112,12 @@ $$;
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id    UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    title           TEXT NOT NULL DEFAULT 'New chat',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE chat_sessions
+ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT 'New chat';
 
 CREATE TABLE IF NOT EXISTS messages (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

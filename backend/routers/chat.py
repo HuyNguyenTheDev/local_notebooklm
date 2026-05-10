@@ -15,6 +15,7 @@ from backend.models.document import (
     ChatResponse,
     ChatSessionCreate,
     ChatSessionPreview,
+    ChatSessionUpdate,
 )
 from backend.services.embedding import embed_query
 from backend.services.llm_client import ask_llm
@@ -25,6 +26,7 @@ from backend.services.vector_store import (
     insert_chat_message,
     list_chat_messages,
     list_chat_sessions,
+    rename_chat_session,
     resolve_workspace_id,
     similarity_search,
 )
@@ -51,7 +53,7 @@ async def create_chat_session_endpoint(body: ChatSessionCreate) -> ChatSessionPr
     if resolved is None:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    row = await create_chat_session(resolved)
+    row = await create_chat_session(resolved, _clean_session_title(body.title))
     return _row_to_session(row)
 
 
@@ -77,6 +79,23 @@ async def remove_chat_session(session_id: UUID, workspace_id: str = Query(...)) 
     return {"status": "deleted", "id": str(session_id)}
 
 
+@router.patch("/sessions/{session_id}", response_model=ChatSessionPreview)
+async def update_chat_session(session_id: UUID, body: ChatSessionUpdate) -> ChatSessionPreview:
+    resolved = await resolve_workspace_id(body.workspace_id)
+    if resolved is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    title = _clean_session_title(body.title)
+    renamed = await rename_chat_session(session_id, resolved, title)
+    if not renamed:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
+    row = await get_chat_session(session_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    return _row_to_session(row)
+
+
 @router.post("", response_model=ChatResponse)
 async def chat_with_documents(payload: ChatRequest) -> ChatResponse:
     question = payload.question.strip()
@@ -87,8 +106,18 @@ async def chat_with_documents(payload: ChatRequest) -> ChatResponse:
     if resolved_workspace_id is None:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    session_id = await _resolve_or_create_session(payload.session_id, resolved_workspace_id)
+    session_id = await _resolve_or_create_session(
+        payload.session_id,
+        resolved_workspace_id,
+        title=_title_from_question(question),
+    )
     history_rows = await list_chat_messages(session_id)
+    await _rename_empty_default_session(
+        session_id=session_id,
+        workspace_id=resolved_workspace_id,
+        history_rows=history_rows,
+        first_question=question,
+    )
 
     try:
         query_vector = await embed_query(question)
@@ -140,9 +169,10 @@ async def chat_with_documents(payload: ChatRequest) -> ChatResponse:
 async def _resolve_or_create_session(
     session_id: UUID | None,
     workspace_id: UUID,
+    title: str = "New chat",
 ) -> UUID:
     if session_id is None:
-        session = await create_chat_session(workspace_id)
+        session = await create_chat_session(workspace_id, title=title)
         return UUID(str(session["id"]))
 
     session = await get_chat_session(session_id)
@@ -163,6 +193,7 @@ def _row_to_session(row: dict) -> ChatSessionPreview:
     return ChatSessionPreview(
         id=row["id"],
         workspace_id=row["workspace_id"],
+        title=row.get("title") or "New chat",
         created_at=row["created_at"],
     )
 
@@ -176,3 +207,31 @@ def _row_to_message(row: dict) -> ChatMessageRecord:
         source_chunks=row.get("source_chunks") or [],
         created_at=row["created_at"],
     )
+
+
+async def _rename_empty_default_session(
+    session_id: UUID,
+    workspace_id: UUID,
+    history_rows: list[dict],
+    first_question: str,
+) -> None:
+    if history_rows:
+        return
+
+    session = await get_chat_session(session_id)
+    if not session:
+        return
+
+    if (session.get("title") or "New chat") != "New chat":
+        return
+
+    await rename_chat_session(session_id, workspace_id, _title_from_question(first_question))
+
+
+def _clean_session_title(title: str | None) -> str:
+    cleaned = (title or "New chat").strip()
+    return cleaned[:80] if cleaned else "New chat"
+
+
+def _title_from_question(question: str) -> str:
+    return _clean_session_title(question)

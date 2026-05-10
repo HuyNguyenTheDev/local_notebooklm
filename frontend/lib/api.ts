@@ -37,6 +37,7 @@ export type ChatMessage = {
 export type ChatSession = {
   id: string;
   workspace_id: string;
+  title: string;
   created_at: string;
 };
 
@@ -181,17 +182,33 @@ export async function getChatSessions(workspaceId: string): Promise<ChatSession[
   return response.json();
 }
 
-export async function createChatSession(workspaceId: string): Promise<ChatSession> {
+export async function createChatSession(workspaceId: string, title = "New chat"): Promise<ChatSession> {
   const response = await fetch(`${API_BASE_URL}/chat/sessions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ workspace_id: workspaceId }),
+    body: JSON.stringify({ workspace_id: workspaceId, title }),
   });
 
   if (!response.ok) {
     throw new Error("Failed to create chat session");
+  }
+
+  return response.json();
+}
+
+export async function renameChatSession(sessionId: string, workspaceId: string, title: string): Promise<ChatSession> {
+  const response = await fetch(`${API_BASE_URL}/chat/sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ workspace_id: workspaceId, title }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to rename chat session");
   }
 
   return response.json();

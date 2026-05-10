@@ -188,12 +188,12 @@ async def rename_file(file_id: UUID, workspace_id: UUID, new_filename: str) -> b
 # ---------------------------------------------------------------------------
 
 
-async def create_chat_session(workspace_id: UUID) -> dict:
+async def create_chat_session(workspace_id: UUID, title: str = "New chat") -> dict:
     """Create a chat session for a workspace."""
     sb = get_supabase_client()
     result = (
         sb.table("chat_sessions")
-        .insert({"workspace_id": str(workspace_id)})
+        .insert({"workspace_id": str(workspace_id), "title": title})
         .execute()
     )
     return result.data[0]
@@ -225,6 +225,19 @@ async def delete_chat_session(session_id: UUID, workspace_id: UUID) -> bool:
     result = (
         sb.table("chat_sessions")
         .delete()
+        .eq("id", str(session_id))
+        .eq("workspace_id", str(workspace_id))
+        .execute()
+    )
+    return bool(result.data)
+
+
+async def rename_chat_session(session_id: UUID, workspace_id: UUID, title: str) -> bool:
+    """Rename a chat session."""
+    sb = get_supabase_client()
+    result = (
+        sb.table("chat_sessions")
+        .update({"title": title})
         .eq("id", str(session_id))
         .eq("workspace_id", str(workspace_id))
         .execute()
