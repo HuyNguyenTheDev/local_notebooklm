@@ -11,7 +11,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.config import EMBED_MODEL
-from backend.services.chunker import estimate_token_count
 from backend.services.embedding import embed_texts
 from backend.services.vector_store import insert_chunks, resolve_workspace_id
 
@@ -57,9 +56,7 @@ async def create_embeddings(payload: EmbeddingRequest) -> EmbeddingResponse:
         raise HTTPException(status_code=400, detail="texts cannot be empty")
 
     embed_model = payload.embed_model or EMBED_MODEL
-    embeddings = await embed_texts(texts)
-
-    token_counts = [estimate_token_count(t) for t in texts]
+    embeddings, token_counts = await embed_texts(texts)
     await insert_chunks(
         file_id=payload.file_id,
         workspace_id=resolved,

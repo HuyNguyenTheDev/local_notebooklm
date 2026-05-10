@@ -34,10 +34,3 @@ def split_text(raw_text: str) -> list[str]:
     chunks = splitter.split_text(raw_text)
     # Lọc bỏ chunk rỗng
     return [c.strip() for c in chunks if c.strip()]
-
-
-def estimate_token_count(text: str) -> int:
-    """Ước tính số token của một đoạn text dùng tiktoken."""
-    import tiktoken
-    enc = tiktoken.get_encoding("cl100k_base")
-    return len(enc.encode(text))

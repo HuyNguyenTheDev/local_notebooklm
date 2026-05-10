@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-from backend.services.chunker import estimate_token_count, split_text
+from backend.services.chunker import split_text
 from backend.services.embedding import EMBED_MODEL, embed_texts
 from backend.services.file_parser import parse_file_async
 from backend.services.vector_store import (
@@ -77,11 +77,8 @@ async def _run_ingest(file_id: UUID, workspace_id: UUID, stored_path: Path) -> N
             await update_file_status(file_id, "done")
             return
 
-        # --- Bước 4: Embed (batch) ---
-        embeddings = await embed_texts(chunks)
-
-        # --- Bước 5: Token counts ---
-        token_counts = [estimate_token_count(c) for c in chunks]
+        # --- Bước 4 & 5: Embed (batch) và lấy Token counts từ API ---
+        embeddings, token_counts = await embed_texts(chunks)
 
         # --- Bước 6: Xóa chunks cũ (re-ingest support) + Insert mới ---
         await delete_chunks_by_file(file_id)
@@ -99,5 +96,8 @@ async def _run_ingest(file_id: UUID, workspace_id: UUID, stored_path: Path) -> N
         await update_file_status(file_id, "done")
         print(f"[INFO] ingest_file {file_id}: {len(chunks)} chunks embedded & stored.")
     except Exception as exc:
-        print(f"[ERROR] ingest_file {file_id} (post-parse): {exc}")
+        import traceback
+        with open("ingest_error.log", "w", encoding="utf-8") as f:
+            f.write(traceback.format_exc())
+        print(f"[ERROR] ingest_file {file_id} (post-parse) failed. See ingest_error.log")
         await update_file_status(file_id, "failed")
