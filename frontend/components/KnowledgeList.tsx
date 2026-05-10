@@ -30,6 +30,20 @@ const BADGE_COLORS: Record<string, string> = {
   md: "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400",
 };
 
+const STATUS_COLORS: Record<string, string> = {
+  pending: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400",
+  processing: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400",
+  done: "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400",
+  failed: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Pending",
+  processing: "Processing",
+  done: "Indexed",
+  failed: "Failed",
+};
+
 const FINAL_PARSE_STATUSES = new Set(["done", "failed"]);
 
 export default function KnowledgeList({ workspaceId, documents, onDeleted }: KnowledgeListProps) {
@@ -175,8 +189,11 @@ export default function KnowledgeList({ workspaceId, documents, onDeleted }: Kno
                     </p>
                   )}
                   <div className="flex items-center gap-1.5 mt-1">
-                    <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${BADGE_COLORS[doc.file_type.toLowerCase()] ?? "bg-surface-container text-on-surface-variant"}`}>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${BADGE_COLORS[doc.file_type.toLowerCase()] ?? "bg-surface-container text-on-surface-variant"}`}>
                       {doc.file_type.toUpperCase()}
+                    </span>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${STATUS_COLORS[doc.parse_status] ?? "bg-surface-container text-on-surface-variant"}`}>
+                      {STATUS_LABELS[doc.parse_status] ?? doc.parse_status}
                     </span>
                     <span className="text-[10px] text-on-surface-variant">{formatDate(doc.created_at)}</span>
                   </div>

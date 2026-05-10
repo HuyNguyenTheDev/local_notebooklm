@@ -331,6 +331,26 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
     return map[type.toLowerCase()] ?? "bg-surface-container text-on-surface-variant";
   };
 
+  const getStatusColors = (status: string) => {
+    const map: Record<string, string> = {
+      pending: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400",
+      processing: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400",
+      done: "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400",
+      failed: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400",
+    };
+    return map[status.toLowerCase()] ?? "bg-surface-container text-on-surface-variant";
+  };
+
+  const getStatusLabel = (status: string) => {
+    const map: Record<string, string> = {
+      pending: "Pending",
+      processing: "Processing",
+      done: "Indexed",
+      failed: "Failed",
+    };
+    return map[status.toLowerCase()] ?? status;
+  };
+
   const canViewContent = (doc: DocumentPreview) => FINAL_PARSE_STATUSES.has(doc.parse_status);
   const canViewChunks = (doc: DocumentPreview) => doc.parse_status === "done";
 
@@ -498,8 +518,8 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
                   <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${getBadgeColors(doc.file_type)}`}>
                     {doc.file_type.toUpperCase()}
                   </span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-surface-container text-on-surface-variant">
-                    {t("indexed")}
+                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${getStatusColors(doc.parse_status)}`}>
+                    {getStatusLabel(doc.parse_status)}
                   </span>
                 </div>
               </div>
