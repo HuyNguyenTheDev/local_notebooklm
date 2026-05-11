@@ -70,6 +70,9 @@ ehthumbs.db
 backend/data/uploads/*
 !backend/data/uploads/.gitkeep
 backend/data/metadata.json
+backend/data/workspaces.json
+backend/data/backup_*/
+*.log
 
 # Testing
 .pytest_cache/
