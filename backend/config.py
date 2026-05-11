@@ -50,8 +50,8 @@ OPENROUTER_SITE_URL: str = os.getenv("OPENROUTER_SITE_URL", "")
 OPENROUTER_SITE_NAME: str = os.getenv("OPENROUTER_SITE_NAME", "")
 
 # ── Chunking ──────────────────────────────────────────────────────────────
-CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "512"))
-CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "64"))
+CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1024"))
+CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "128"))
 
 # ── Vector / Embedding ────────────────────────────────────────────────────
 EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "1024"))

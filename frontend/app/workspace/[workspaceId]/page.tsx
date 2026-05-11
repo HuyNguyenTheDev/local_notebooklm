@@ -143,18 +143,6 @@ export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) 
             <div className="flex bg-surface-container-low dark:bg-slate-800 rounded-xl p-1 gap-1">
               <button
                 type="button"
-                onClick={() => setActiveView("sources")}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                  activeView === "sources"
-                    ? "bg-white dark:bg-slate-700 text-primary shadow-sm"
-                    : "text-on-surface-variant hover:text-on-surface"
-                }`}
-              >
-                <span className="material-symbols-outlined text-[16px]">book</span>
-                {t("sources")}
-              </button>
-              <button
-                type="button"
                 onClick={() => setActiveView("chat")}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
                   activeView === "chat"
@@ -164,6 +152,18 @@ export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) 
               >
                 <span className="material-symbols-outlined text-[16px]">chat</span>
                 {t("chat")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveView("sources")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  activeView === "sources"
+                    ? "bg-white dark:bg-slate-700 text-primary shadow-sm"
+                    : "text-on-surface-variant hover:text-on-surface"
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">book</span>
+                {t("sources")}
               </button>
             </div>
 

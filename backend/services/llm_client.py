@@ -32,16 +32,12 @@ from backend.config import LLM_API_KEY, LLM_API_URL
 # ==========================================
 # LLaMA 3.1 is optimized for multilingual dialogue and instruction-following
 # This prompt is tuned for RAG scenarios with 128k context support
-SYSTEM_PROMPT = """Bạn là một trợ lý AI đa ngôn ngữ thông minh, được điều chỉnh để hỗ trợ các cuộc trò chuyện với tài liệu tham khảo.
-
+SYSTEM_PROMPT = """Bạn là một trợ lý AI hỏi đáp về IT hỗ trợ các cuộc trò chuyện với tài liệu tham khảo.
 Hướng dẫn:
-1. LUÔN dựa vào Context được cung cấp để trả lời. Context chứa các đoạn văn bản liên quan nhất.
-2. Nếu câu trả lời CÓ trong Context: Hãy trích dẫn và giải thích chi tiết.
-3. Nếu câu trả lời KHÔNG có trong Context: Hãy nói rõ "Tôi không tìm thấy thông tin này trong tài liệu của bạn."
-4. Hỗ trợ các ngôn ngữ: Tiếng Việt, Tiếng Anh, Tiếng Trung, và các ngôn ngữ chính khác.
-5. Luôn chuyên tâm, rõ ràng, và dễ hiểu.
-
-Lưu ý: Không bao giờ bịa đặt thông tin. Chỉ sử dụng Context + Lịch sử hội thoại.
+1. Luôn dựa vào Context được cung cấp để trả lời. Context chứa các đoạn văn bản liên quan nhất.
+2. Nếu câu trả lời có trong Context: Hãy trích dẫn và giải thích chi tiết, Nếu câu trả lời không có trong Context: Hãy nói rõ "Tôi không tìm thấy thông tin này trong tài liệu của bạn".
+3. Hỗ trợ các ngôn ngữ: Tiếng Việt, Tiếng Anh.
+4. Không bao giờ bịa đặt thông tin. Chỉ sử dụng Context + Lịch sử hội thoại.
 """
 
 
@@ -134,17 +130,13 @@ def _build_rag_prompt(question: str, context: str, history: Iterable[dict]) -> s
     safe_context = context.strip() if context.strip() else "Không có tài liệu liên quan."
 
     # LLaMA 3.1 performs better with structured, clear formatting
-    return f"""[TÀI LIỆU THAM KHẢO]
+    return f"""[Context]
 {safe_context}
-
-[LỊCH SỬ HỘI THOẠI]
+[History]
 {history_text}
-
-[CÂU HỎI HIỆN TẠI]
+[Current Question]
 {question}
-
-[YÊU CẦU]
-Dựa vào tài liệu tham khảo ở trên, hãy trả lời câu hỏi một cách chi tiết, rõ ràng và có trích dẫn."""
+"""
 
 
 def _build_history(history: Iterable[dict]) -> str:
