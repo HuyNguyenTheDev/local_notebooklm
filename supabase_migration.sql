@@ -1,15 +1,22 @@
 -- ============================================================
--- Local NotebookLM — Supabase Migration Script
--- Chạy file này trên Supabase SQL Editor
+-- Local NotebookLM - Supabase one-shot migration
+-- Run this whole file once in Supabase SQL Editor.
+--
+-- Safe to re-run for normal updates:
+-- - Tables/indexes use IF NOT EXISTS where possible.
+-- - Functions use CREATE OR REPLACE.
+-- - Existing user data is not deleted.
 -- ============================================================
 
+-- ------------------------------------------------------------
 -- 1. Extensions
+-- ------------------------------------------------------------
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
--- ============================================================
--- 2. Bảng workspaces
--- ============================================================
+-- ------------------------------------------------------------
+-- 2. Workspaces
+-- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS workspaces (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name        TEXT NOT NULL UNIQUE,
@@ -17,7 +24,6 @@ CREATE TABLE IF NOT EXISTS workspaces (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Auto-update updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -31,16 +37,16 @@ CREATE TRIGGER trg_workspaces_updated_at
     BEFORE UPDATE ON workspaces
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- ============================================================
--- 3. Bảng files
--- ============================================================
+-- ------------------------------------------------------------
+-- 3. Files
+-- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS files (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id    UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     filename        TEXT NOT NULL,
-    file_type       TEXT NOT NULL,               -- 'pdf' | 'txt' | 'md'
-    storage_path    TEXT,                         -- (optional) Supabase Storage path
-    raw_text        TEXT,                         -- full extracted text
+    file_type       TEXT NOT NULL, -- pdf | txt | md
+    storage_path    TEXT,
+    raw_text        TEXT,
     parse_status    TEXT NOT NULL DEFAULT 'pending'
                     CHECK (parse_status IN ('pending', 'processing', 'done', 'failed')),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -49,9 +55,9 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE INDEX IF NOT EXISTS idx_files_workspace ON files(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_files_status ON files(parse_status);
 
--- ============================================================
--- 4. Bảng chunks (tim của RAG)
--- ============================================================
+-- ------------------------------------------------------------
+-- 4. Chunks and vector search
+-- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS chunks (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     file_id         UUID NOT NULL REFERENCES files(id) ON DELETE CASCADE,
@@ -59,27 +65,23 @@ CREATE TABLE IF NOT EXISTS chunks (
     chunk_index     INTEGER NOT NULL,
     content         TEXT NOT NULL,
     token_count     INTEGER,
-    embedding       VECTOR(1024),                -- BAAI/bge-m3 dimension
+    embedding       VECTOR(1024), -- BAAI/bge-m3 dimension
     embed_model     TEXT DEFAULT 'BAAI/bge-m3',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     UNIQUE(file_id, chunk_index)
 );
 
--- Vector indexes
 CREATE INDEX IF NOT EXISTS idx_chunks_workspace ON chunks(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_file ON chunks(file_id);
 
 -- HNSW index for approximate cosine similarity search.
--- Works with ORDER BY embedding <=> query_embedding LIMIT k.
+-- The app queries with ORDER BY embedding <=> query_embedding LIMIT k.
 CREATE INDEX IF NOT EXISTS idx_chunks_embedding_hnsw
     ON chunks
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
 
--- ============================================================
--- 5. Hàm search_chunks (gọi từ Python qua supabase.rpc)
--- ============================================================
 CREATE OR REPLACE FUNCTION search_chunks(
     query_embedding VECTOR(1024),
     target_workspace_id UUID,
@@ -95,22 +97,21 @@ RETURNS TABLE (
 LANGUAGE sql STABLE
 AS $$
     SELECT
-        id          AS chunk_id,
+        id AS chunk_id,
         file_id,
         content,
         1 - (embedding <=> query_embedding) AS similarity
     FROM chunks
     WHERE workspace_id = target_workspace_id
+      AND embedding IS NOT NULL
       AND 1 - (embedding <=> query_embedding) > similarity_threshold
     ORDER BY embedding <=> query_embedding
     LIMIT match_count;
 $$;
 
--- ============================================================
--- 6. Bảng chat_sessions & messages (optional — lưu lịch sử chat)
--- ============================================================
--- 6. BM25 over chunks (Materialized View + manual refresh)
--- ============================================================
+-- ------------------------------------------------------------
+-- 5. BM25 lexical search over chunks
+-- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS chunk_terms (
     chunk_id      UUID NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
     workspace_id  UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -141,7 +142,7 @@ BEGIN
     FROM chunks c
     CROSS JOIN LATERAL ts_stat(
         format('SELECT to_tsvector(''english'', %L)', c.content)
-    ) AS stat(word TEXT, ndoc INTEGER, nentry INTEGER)
+    ) AS stat
     WHERE c.id = target_chunk_id
       AND stat.nentry > 0
     ON CONFLICT (chunk_id, term) DO UPDATE
@@ -169,7 +170,7 @@ BEGIN
     FROM chunks c
     CROSS JOIN LATERAL ts_stat(
         format('SELECT to_tsvector(''english'', %L)', c.content)
-    ) AS stat(word TEXT, ndoc INTEGER, nentry INTEGER)
+    ) AS stat
     WHERE c.file_id = target_file_id
       AND stat.nentry > 0
     ON CONFLICT (chunk_id, term) DO UPDATE
@@ -300,13 +301,9 @@ AS $$
     LIMIT match_count;
 $$;
 
--- Refresh examples:
--- SELECT rebuild_bm25_terms_for_file('<file-id>'::uuid);
--- REFRESH MATERIALIZED VIEW bm25_stats;
-
--- ============================================================
--- 7. Chat sessions & messages
--- ============================================================
+-- ------------------------------------------------------------
+-- 6. Chat sessions and messages
+-- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id    UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -322,22 +319,10 @@ CREATE TABLE IF NOT EXISTS messages (
     session_id      UUID NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
     role            TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
     content         TEXT NOT NULL,
-    source_chunks   UUID[],                       -- chunk IDs dùng làm context
+    source_chunks   UUID[],
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace ON chat_sessions(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
 
--- ============================================================
--- 7. Row Level Security (RLS) — bật nếu cần multi-tenant
--- Hiện tại disable để backend service role truy cập tự do
--- ============================================================
--- ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE files ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE chunks ENABLE ROW LEVEL SECURITY;
-
--- ============================================================
--- DONE! Kiểm tra:
--- SELECT table_name FROM information_schema.tables
--- WHERE table_schema = 'public';
--- ============================================================

@@ -155,9 +155,9 @@ def _build_history(history: Iterable[dict]) -> str:
         else:
             lines.append(f"[{role}]: {content}")
 
-    # Keep last 15 messages to maintain context without exceeding limits
+    # Keep the last 3 user-assistant turns to avoid bloating the prompt.
     if lines:
-        return "\n".join(lines[-15:])
+        return "\n".join(lines[-6:])
     return "(Chưa có lịch sử)"
 
 

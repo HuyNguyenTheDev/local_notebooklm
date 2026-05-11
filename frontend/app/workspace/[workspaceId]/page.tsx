@@ -127,7 +127,7 @@ export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) 
   return (
     <div className="flex flex-col h-full min-h-[calc(100vh-57px)]">
       {/* Page header */}
-      <div className="px-8 pt-8 pb-4 border-b border-outline-variant/10">
+      <div className="px-8 pt-4 pb-2 border-b border-outline-variant/10">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-5">
           <div>
             <h1 className="text-3xl font-extrabold text-on-surface tracking-tight font-headline mb-1">
@@ -220,7 +220,7 @@ export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) 
                 onDeleteSession={handleDeleteChatSession}
               />
             </div>
-            <div className="flex-1 overflow-hidden p-6">
+            <div className="flex-1 overflow-hidden p-4">
               <ChatBox
                 workspaceId={workspaceId}
                 activeSessionId={activeChatSessionId}
