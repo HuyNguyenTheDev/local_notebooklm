@@ -23,6 +23,7 @@ from backend.services.file_parser import parse_file_async
 from backend.services.vector_store import (
     delete_chunks_by_file,
     insert_chunks,
+    refresh_bm25_for_file,
     update_file_status,
     update_file_text,
 )
@@ -84,6 +85,7 @@ async def _run_ingest(file_id: UUID, workspace_id: UUID, stored_path: Path) -> N
             token_counts=token_counts,
             embed_model=EMBED_MODEL,
         )
+        await refresh_bm25_for_file(file_id)
 
         # Mark done chỉ sau khi toàn bộ pipeline thành công
         await update_file_text(file_id, raw_text, parse_status="done")

@@ -24,6 +24,7 @@ export default function ChatBox({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [isHybridSearch, setIsHybridSearch] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const hasMessages = useMemo(() => messages.length > 0, [messages]);
@@ -79,9 +80,17 @@ export default function ChatBox({
 
     try {
       setIsTyping(true);
-      const data = await sendChat(trimmed, workspaceId, activeSessionId);
+      const data = await sendChat(
+        trimmed,
+        workspaceId,
+        activeSessionId,
+        isHybridSearch ? "hybrid" : "vector",
+      );
       onSessionChange(data.session_id);
-      setMessages((prev) => [...prev, { role: "assistant", content: data.answer }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: data.answer, sources: data.sources },
+      ]);
       onSessionsChanged();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Chat error";
@@ -111,6 +120,20 @@ export default function ChatBox({
           <p className="text-[11px] text-on-surface-variant">{t("chatHint")}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsHybridSearch((value) => !value)}
+            aria-pressed={isHybridSearch}
+            title={isHybridSearch ? "Hybrid search is active" : "Use vector + BM25 search"}
+            className={`h-8 inline-flex items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold transition-colors ${
+              isHybridSearch
+                ? "border-primary/30 bg-primary text-on-primary shadow-sm"
+                : "border-outline-variant/20 bg-surface-container-low text-on-surface-variant hover:border-primary/30 hover:text-primary"
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">hub</span>
+            <span>Hybrid</span>
+          </button>
           {hasMessages && (
             <button
               type="button"

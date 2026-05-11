@@ -1,4 +1,19 @@
+import io
+import sys
+
+from backend.config import CHUNK_OVERLAP, CHUNK_SIZE
 from backend.services.chunker import split_text
+
+
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+
+def _shared_overlap_len(left: str, right: str, max_chars: int = 300) -> int:
+    max_len = min(max_chars, len(left), len(right))
+    for size in range(max_len, 0, -1):
+        if left[-size:] == right[:size]:
+            return size
+    return 0
 
 
 def main() -> None:
@@ -620,6 +635,14 @@ Number of Parameters (Millions, log-scale)
 
     chunks = split_text(raw_text)
     print(f"Total chunks: {len(chunks)}")
+    print(f"Configured chunk_size={CHUNK_SIZE}, chunk_overlap={CHUNK_OVERLAP}")
+    if chunks:
+        lengths = [len(chunk) for chunk in chunks]
+        print(f"Chunk length: min={min(lengths)}, max={max(lengths)}, avg={sum(lengths) // len(lengths)}")
+    print("Adjacent overlap lengths:")
+    for i in range(len(chunks) - 1):
+        print(f"  {i + 1:02d} -> {i + 2:02d}: {_shared_overlap_len(chunks[i], chunks[i + 1])} chars")
+    print()
     for i, chunk in enumerate(chunks, 1):
         print(f"--- Chunk {i} ---")
         print(chunk)

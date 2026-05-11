@@ -6,12 +6,18 @@ Dùng Supabase sync client để tối giản complexity.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Optional
 from uuid import UUID
 
 from backend.database import get_db_pool, get_supabase_client
 from backend.models.chunk import ChunkSearchResult
+
+try:
+    from deep_translator import GoogleTranslator
+except ImportError:  # pragma: no cover - runtime dependency in BM25 mode
+    GoogleTranslator = None
 
 # ---------------------------------------------------------------------------
 # Workspaces
@@ -92,6 +98,7 @@ async def delete_workspace(workspace_id: UUID) -> int:
     file_count = files_res.count or 0
 
     sb.table("workspaces").delete().eq("id", str(workspace_id)).execute()
+    await refresh_bm25_stats()
     return file_count
 
 
@@ -167,6 +174,8 @@ async def delete_file(file_id: UUID, workspace_id: UUID) -> bool:
         .eq("workspace_id", str(workspace_id))
         .execute()
     )
+    if result.data:
+        await refresh_bm25_stats()
     return bool(result.data)
 
 
@@ -319,6 +328,42 @@ async def insert_chunks(
         ).execute()
 
 
+async def refresh_bm25_for_file(file_id: UUID) -> None:
+    """
+    Rebuild BM25 term frequencies for one file and refresh corpus stats.
+
+    The SQL objects live in `supabase_migration.sql`. This function is best-effort
+    so ingestion still succeeds if BM25 has not been migrated yet.
+    """
+    try:
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("SELECT rebuild_bm25_terms_for_file($1::uuid)", file_id)
+            await conn.execute("REFRESH MATERIALIZED VIEW bm25_stats")
+            term_count = await conn.fetchval(
+                """
+                SELECT count(*)
+                FROM chunk_terms ct
+                JOIN chunks c ON c.id = ct.chunk_id
+                WHERE c.file_id = $1::uuid
+                """,
+                file_id,
+            )
+            print(f"[INFO] BM25 refreshed for file {file_id}: {term_count} terms.")
+    except Exception as exc:
+        print(f"[WARN] BM25 refresh for file {file_id} failed: {exc}")
+
+
+async def refresh_bm25_stats() -> None:
+    """Refresh BM25 corpus statistics after deletes or bulk maintenance."""
+    try:
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("REFRESH MATERIALIZED VIEW bm25_stats")
+    except Exception as exc:
+        print(f"[WARN] BM25 stats refresh failed: {exc}")
+
+
 async def delete_chunks_by_file(file_id: UUID) -> None:
     """Xóa tất cả chunks của một file."""
     sb = get_supabase_client()
@@ -393,6 +438,118 @@ async def similarity_search(
     ]
 
 
+async def bm25_search(
+    workspace_id: UUID,
+    query: str,
+    top_k: int = 5,
+    min_score: float = 0.0,
+) -> list[ChunkSearchResult]:
+    """
+    Search chunks with BM25 over normalized English terms.
+
+    Vietnamese questions are translated to English only inside this BM25 flow,
+    leaving the default vector path untouched.
+    """
+    bm25_query = await _translate_vi_to_en_for_bm25(query)
+
+    try:
+        pool = await get_db_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT chunk_id, file_id, content, score
+                FROM search_chunks_bm25($1::text, $2::uuid, $3::int, $4::float)
+                """,
+                bm25_query,
+                str(workspace_id),
+                top_k,
+                min_score,
+            )
+    except Exception as exc:
+        print(f"[WARN] direct BM25 search failed, falling back to Supabase RPC: {exc}")
+        return await _bm25_search_via_rpc(
+            workspace_id=workspace_id,
+            query=bm25_query,
+            top_k=top_k,
+            min_score=min_score,
+        )
+
+    return [
+        ChunkSearchResult(
+            chunk_id=row["chunk_id"],
+            file_id=row["file_id"],
+            content=row["content"],
+            similarity=float(row["score"]),
+        )
+        for row in rows
+    ]
+
+
+async def hybrid_search(
+    workspace_id: UUID,
+    query: str,
+    query_embedding: list[float],
+    top_k: int = 5,
+    similarity_threshold: float = 0.3,
+) -> list[ChunkSearchResult]:
+    """Blend vector and BM25 rankings with reciprocal rank fusion."""
+    vector_task = similarity_search(
+        workspace_id=workspace_id,
+        query_embedding=query_embedding,
+        top_k=top_k * 2,
+        similarity_threshold=similarity_threshold,
+    )
+    bm25_task = bm25_search(
+        workspace_id=workspace_id,
+        query=query,
+        top_k=top_k * 2,
+    )
+    vector_results, bm25_results = await asyncio.gather(vector_task, bm25_task)
+    return _merge_ranked_results([vector_results, bm25_results], top_k=top_k)
+
+
+async def _translate_vi_to_en_for_bm25(query: str) -> str:
+    cleaned = query.strip()
+    if not cleaned or GoogleTranslator is None:
+        return cleaned
+
+    try:
+        translated = await asyncio.to_thread(
+            lambda: GoogleTranslator(source="vi", target="en").translate(cleaned)
+        )
+    except Exception as exc:
+        print(f"[WARN] BM25 query translation failed, using original query: {exc}")
+        return cleaned
+
+    return translated.strip() or cleaned
+
+
+def _merge_ranked_results(
+    result_groups: list[list[ChunkSearchResult]],
+    top_k: int,
+) -> list[ChunkSearchResult]:
+    fused: dict[str, dict] = {}
+    rank_constant = 60
+
+    for results in result_groups:
+        for rank, result in enumerate(results, start=1):
+            key = str(result.chunk_id)
+            if key not in fused:
+                fused[key] = {"result": result, "score": 0.0}
+            fused[key]["score"] += 1 / (rank_constant + rank)
+
+    ranked = sorted(fused.values(), key=lambda item: item["score"], reverse=True)
+    return [
+        ChunkSearchResult(
+            chunk_id=item["result"].chunk_id,
+            file_id=item["result"].file_id,
+            content=item["result"].content,
+            similarity=item["score"],
+        )
+        for item in ranked[:top_k]
+    ]
+
+
 async def _similarity_search_via_rpc(
     workspace_id: UUID,
     embedding_str: str,
@@ -423,4 +580,37 @@ async def _similarity_search_via_rpc(
         ]
     except Exception as exc:
         print(f"[ERROR] Supabase RPC search_chunks failed: {exc}")
+        return []
+
+
+async def _bm25_search_via_rpc(
+    workspace_id: UUID,
+    query: str,
+    top_k: int,
+    min_score: float,
+) -> list[ChunkSearchResult]:
+    """Fallback BM25 search through Supabase REST/RPC."""
+    try:
+        sb = get_supabase_client()
+        result = sb.rpc(
+            "search_chunks_bm25",
+            {
+                "p_query": query,
+                "target_workspace_id": str(workspace_id),
+                "match_count": top_k,
+                "min_score": min_score,
+            },
+        ).execute()
+
+        return [
+            ChunkSearchResult(
+                chunk_id=row["chunk_id"],
+                file_id=row["file_id"],
+                content=row["content"],
+                similarity=float(row["score"]),
+            )
+            for row in (result.data or [])
+        ]
+    except Exception as exc:
+        print(f"[ERROR] Supabase RPC search_chunks_bm25 failed: {exc}")
         return []

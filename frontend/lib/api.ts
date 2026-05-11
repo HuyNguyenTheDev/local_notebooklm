@@ -30,6 +30,7 @@ export type ChatMessage = {
   session_id?: string;
   role: "user" | "assistant";
   content: string;
+  sources?: string[];
   source_chunks?: string[];
   created_at?: string;
 };
@@ -46,6 +47,8 @@ export type ChatResponse = {
   session_id: string;
   sources: string[];
 };
+
+export type ChatSearchMode = "vector" | "bm25" | "hybrid";
 
 export type WorkspacePreview = {
   id: string;
@@ -235,13 +238,23 @@ export async function deleteChatSession(sessionId: string, workspaceId: string):
   }
 }
 
-export async function sendChat(question: string, workspaceId: string, sessionId?: string | null): Promise<ChatResponse> {
+export async function sendChat(
+  question: string,
+  workspaceId: string,
+  sessionId?: string | null,
+  searchMode: ChatSearchMode = "vector",
+): Promise<ChatResponse> {
   const response = await fetch(`${API_BASE_URL}/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ question, workspace_id: workspaceId, session_id: sessionId ?? undefined }),
+    body: JSON.stringify({
+      question,
+      workspace_id: workspaceId,
+      session_id: sessionId ?? undefined,
+      search_mode: searchMode,
+    }),
   });
 
   if (!response.ok) {

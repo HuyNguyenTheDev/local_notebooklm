@@ -20,9 +20,11 @@ from backend.models.document import (
 from backend.services.embedding import embed_query
 from backend.services.llm_client import ask_llm
 from backend.services.vector_store import (
+    bm25_search,
     create_chat_session,
     delete_chat_session,
     get_chat_session,
+    hybrid_search,
     insert_chat_message,
     list_chat_messages,
     list_chat_sessions,
@@ -122,19 +124,10 @@ async def chat_with_documents(payload: ChatRequest) -> ChatResponse:
         first_question=question,
     )
 
-    try:
-        query_vector = await embed_query(question)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Embedding service unavailable: {exc}",
-        )
-
-    results = await similarity_search(
+    results = await _search_context_chunks(
         workspace_id=resolved_workspace_id,
-        query_embedding=query_vector,
-        top_k=_TOP_K,
-        similarity_threshold=_SIMILARITY_THRESHOLD,
+        question=question,
+        search_mode=payload.search_mode,
     )
 
     if results:
@@ -167,6 +160,42 @@ async def chat_with_documents(payload: ChatRequest) -> ChatResponse:
     )
 
     return ChatResponse(answer=answer, session_id=session_id, sources=sources)
+
+
+async def _search_context_chunks(
+    workspace_id: UUID,
+    question: str,
+    search_mode: str,
+):
+    if search_mode == "bm25":
+        return await bm25_search(workspace_id=workspace_id, query=question, top_k=_TOP_K)
+
+    try:
+        query_vector = await embed_query(question)
+    except Exception as exc:
+        if search_mode == "hybrid":
+            print(f"[WARN] Hybrid vector branch failed, using BM25 only: {exc}")
+            return await bm25_search(workspace_id=workspace_id, query=question, top_k=_TOP_K)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Embedding service unavailable: {exc}",
+        )
+
+    if search_mode == "hybrid":
+        return await hybrid_search(
+            workspace_id=workspace_id,
+            query=question,
+            query_embedding=query_vector,
+            top_k=_TOP_K,
+            similarity_threshold=_SIMILARITY_THRESHOLD,
+        )
+
+    return await similarity_search(
+        workspace_id=workspace_id,
+        query_embedding=query_vector,
+        top_k=_TOP_K,
+        similarity_threshold=_SIMILARITY_THRESHOLD,
+    )
 
 
 async def _resolve_or_create_session(

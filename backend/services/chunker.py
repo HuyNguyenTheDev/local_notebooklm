@@ -35,10 +35,12 @@ _SENTENCE_END_RE = re.compile(r"[.!?:;)\]\}\"']$")
 
 def _get_splitter() -> RecursiveCharacterTextSplitter:
     """Khởi tạo splitter theo số ký tự (phù hợp với snippet chuẩn)."""
+    effective_chunk_size = max(256, CHUNK_SIZE - max(0, CHUNK_OVERLAP))
     return RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
+        chunk_size=effective_chunk_size,
         chunk_overlap=CHUNK_OVERLAP,
-        separators=["\n\n", "\n", "。", ".", " ", ""],
+        keep_separator="end",
+        separators=["\n\n", "\n", ". ", "? ", "! ", "; ", ", ", " ", ""],
     )
 
 
@@ -55,7 +57,8 @@ def split_text(raw_text: str) -> list[str]:
     splitter = _get_splitter()
     chunks = splitter.split_text(normalize_text_for_chunking(raw_text))
     # Lọc bỏ chunk rỗng
-    return [c.strip() for c in chunks if c.strip()]
+    cleaned_chunks = [_clean_chunk(c) for c in chunks]
+    return _add_missing_overlap([c for c in cleaned_chunks if c])
 
 
 def normalize_text_for_chunking(raw_text: str) -> str:
@@ -111,11 +114,82 @@ def _should_start_new_block(previous: str, current: str) -> bool:
         return True
     if _looks_like_isolated_metadata(previous) or _looks_like_isolated_metadata(current):
         return True
-    if _SENTENCE_END_RE.search(previous) and not _looks_like_wrapped_prose(current):
+    if _SENTENCE_END_RE.search(previous) and _starts_new_sentence_or_block(current):
         return True
     if _SENTENCE_END_RE.search(previous) and _is_heading_like(current):
         return True
     return False
+
+
+def _starts_new_sentence_or_block(line: str) -> bool:
+    first = line[:1]
+    if not first:
+        return False
+    return first.isupper() or first.isdigit() or first in "(["
+
+
+def _clean_chunk(chunk: str) -> str:
+    cleaned = chunk.strip()
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
+    cleaned = re.sub(r"\n[ \t]+", "\n", cleaned)
+    return cleaned
+
+
+def _add_missing_overlap(chunks: list[str]) -> list[str]:
+    if CHUNK_OVERLAP <= 0 or len(chunks) <= 1:
+        return chunks
+
+    overlapped = [chunks[0]]
+    for current in chunks[1:]:
+        previous = overlapped[-1]
+        target_overlap = min(CHUNK_OVERLAP, len(previous))
+        if target_overlap <= 0:
+            overlapped.append(current)
+            continue
+
+        existing_overlap = _shared_suffix_prefix_len(previous, current, target_overlap * 2)
+        if existing_overlap >= max(24, target_overlap // 2):
+            overlapped.append(current)
+            continue
+
+        overlap_prefix = _overlap_prefix(previous, target_overlap)
+        if not overlap_prefix:
+            overlapped.append(current)
+            continue
+
+        if existing_overlap and overlap_prefix.endswith(current[:existing_overlap]):
+            current = overlap_prefix + current[existing_overlap:]
+        else:
+            current = f"{overlap_prefix}\n\n{current}"
+
+        overlapped.append(_clean_chunk(current))
+
+    return overlapped
+
+
+def _shared_suffix_prefix_len(left: str, right: str, max_chars: int) -> int:
+    max_len = min(max_chars, len(left), len(right))
+    for size in range(max_len, 0, -1):
+        if left[-size:] == right[:size]:
+            return size
+    return 0
+
+
+def _overlap_prefix(text: str, max_chars: int) -> str:
+    start = max(0, len(text) - max_chars)
+    prefix = text[start:]
+
+    if start > 0:
+        whitespace_match = re.search(r"\s+", prefix)
+        if whitespace_match:
+            prefix = prefix[whitespace_match.end():]
+
+    sentence_match = re.search(r"(?<=[.!?;:])\s+[A-Z0-9(\[]", prefix)
+    if sentence_match and sentence_match.start() <= max(24, len(prefix) // 3):
+        prefix = prefix[sentence_match.start() + 1:]
+
+    return prefix.strip()
 
 
 def _is_structural_line(line: str) -> bool:

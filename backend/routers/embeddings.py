@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from backend.config import EMBED_MODEL
 from backend.services.embedding import embed_texts
-from backend.services.vector_store import insert_chunks, resolve_workspace_id
+from backend.services.vector_store import insert_chunks, refresh_bm25_for_file, resolve_workspace_id
 
 router = APIRouter(prefix="/embeddings", tags=["embeddings"])
 
@@ -65,6 +65,7 @@ async def create_embeddings(payload: EmbeddingRequest) -> EmbeddingResponse:
         token_counts=token_counts,
         embed_model=embed_model,
     )
+    await refresh_bm25_for_file(payload.file_id)
 
     items: List[EmbeddingItem] = []
     for idx, (text, vec, token_count) in enumerate(zip(texts, embeddings, token_counts)):

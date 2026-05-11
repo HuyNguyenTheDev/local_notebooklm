@@ -2,7 +2,7 @@
 models/document.py - Pydantic schemas for workspace, documents, and chat.
 """
 
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -44,6 +44,7 @@ class ChatRequest(BaseModel):
     question: str
     workspace_id: str
     session_id: Optional[UUID] = None
+    search_mode: Literal["vector", "bm25", "hybrid"] = "vector"
 
 
 class ChatResponse(BaseModel):
