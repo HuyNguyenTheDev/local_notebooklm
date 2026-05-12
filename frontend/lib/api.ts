@@ -31,6 +31,7 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   sources?: string[];
+  search_mode?: ChatSearchMode;
   source_chunks?: string[];
   created_at?: string;
 };
@@ -46,6 +47,7 @@ export type ChatResponse = {
   answer: string;
   session_id: string;
   sources: string[];
+  search_mode: ChatSearchMode;
 };
 
 export type ChatSearchMode = "vector" | "bm25" | "hybrid";

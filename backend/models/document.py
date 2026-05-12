@@ -51,6 +51,7 @@ class ChatResponse(BaseModel):
     answer: str
     session_id: UUID
     sources: list[str] = []
+    search_mode: Literal["vector", "bm25", "hybrid"] = "vector"
 
 
 class ChatSessionCreate(BaseModel):

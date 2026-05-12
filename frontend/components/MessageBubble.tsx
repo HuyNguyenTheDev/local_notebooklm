@@ -7,6 +7,12 @@ type MessageBubbleProps = {
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const sources = !isUser ? message.sources ?? [] : [];
+  const retrievalLabel =
+    message.search_mode === "hybrid"
+      ? "Retrieved chunks - Hybrid RRF"
+      : message.search_mode === "bm25"
+        ? "Retrieved chunks - BM25"
+        : "Retrieved chunks - Vector";
 
   return (
     <div className={`flex items-end gap-2.5 animate-fadeIn ${isUser ? "flex-row-reverse" : "flex-row"}`}>
@@ -43,7 +49,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         {sources.length > 0 && (
           <details className="mt-3 rounded-lg border border-outline-variant/20 bg-surface-container-low dark:bg-slate-900/60">
             <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold text-on-surface-variant hover:text-primary">
-              Retrieved chunks ({sources.length})
+              {retrievalLabel} ({sources.length})
             </summary>
             <div className="space-y-2 border-t border-outline-variant/20 px-3 py-2">
               {sources.map((source, index) => (

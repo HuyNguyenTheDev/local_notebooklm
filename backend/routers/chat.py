@@ -159,7 +159,12 @@ async def chat_with_documents(payload: ChatRequest) -> ChatResponse:
         source_chunks=source_chunk_ids,
     )
 
-    return ChatResponse(answer=answer, session_id=session_id, sources=sources)
+    return ChatResponse(
+        answer=answer,
+        session_id=session_id,
+        sources=sources,
+        search_mode=payload.search_mode,
+    )
 
 
 async def _search_context_chunks(

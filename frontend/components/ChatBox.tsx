@@ -89,7 +89,12 @@ export default function ChatBox({
       onSessionChange(data.session_id);
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.answer, sources: data.sources },
+        {
+          role: "assistant",
+          content: data.answer,
+          sources: data.sources,
+          search_mode: data.search_mode,
+        },
       ]);
       onSessionsChanged();
     } catch (err) {
@@ -134,7 +139,7 @@ export default function ChatBox({
             <span className="material-symbols-outlined text-[16px]">hub</span>
             <span>Hybrid</span>
           </button>
-          {hasMessages && (
+          {/* {hasMessages && (
             <button
               type="button"
               onClick={handleNewChat}
@@ -142,7 +147,7 @@ export default function ChatBox({
             >
               {t("clearChat")}
             </button>
-          )}
+          )} */}
         </div>
       </div>
 
