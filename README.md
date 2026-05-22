@@ -1,358 +1,324 @@
 # Local NotebookLM
 
-Ứng dụng web giống NotebookLM, chạy hoàn toàn local với 3 tầng:
+Local NotebookLM is a self-hosted document Q&A app inspired by NotebookLM. It lets you create workspaces, upload PDF/TXT/MD sources, index document chunks into Supabase Postgres + pgvector, and chat with your own knowledge base through a RAG pipeline.
 
-- **Frontend**: Next.js 15 + TypeScript + TailwindCSS
-- **Backend**: FastAPI (Python)
-- **LLM API**: Server Python trên Google Colab (qua ngrok tunnel)
+![Home workspace](docs/images/features/01-home-workspace.png)
 
-Cho phép upload PDF/TXT/MD, lưu kiến thức locally, và chat dựa trên nội dung tài liệu đã upload.
+## Highlights
 
-## Yêu cầu hệ thống
+- Workspace-based knowledge management.
+- Multi-file upload for `.pdf`, `.txt`, and `.md`.
+- Background ingest pipeline with parse status: `pending`, `processing`, `done`, `failed`.
+- Document actions: view content, view chunks, rename, delete, and rechunk failed files.
+- Persistent chat sessions and chat history per workspace.
+- RAG search modes: vector similarity, BM25 lexical search, and hybrid search.
+- Supabase Postgres schema with `pgvector`, HNSW index, and BM25 helper tables.
+- Clean split between Next.js frontend and FastAPI backend.
 
-- **Node.js**: 20 LTS hoặc mới hơn (kiểm tra: `node --version`)
-- **Python**: 3.10+ (kiểm tra: `python --version`)
-- **npm** hoặc **pnpm**
-- **OS**: Windows, macOS, hoặc Linux
+## Demo
 
-## Cấu trúc dự án
+### Workspace Flow
 
+Create and manage workspaces from the home page.
+
+![Before create workspace](docs/images/features/02-before-create-workspace.png)
+
+![After create workspace](docs/images/features/03-after-create-workspace.png)
+
+### Chat Sessions
+
+Each workspace can keep multiple chat sessions.
+
+![New chat session](docs/images/features/04-new-chat-session.png)
+
+### Source Upload
+
+Add sources through the workspace modal, then track indexed documents in the Sources view.
+
+![Add new source](docs/images/features/05-add-new-source.png)
+
+![View new source](docs/images/features/06-view-new-source.png)
+
+### Document Inspection
+
+Inspect parsed raw text and generated chunks directly from the UI.
+
+![View content source](docs/images/features/07-view-content-source.png)
+
+![View chunks source](docs/images/features/08-view-chunks-source.png)
+
+### RAG Chat
+
+Ask questions against uploaded sources and review answers with retrieved context.
+
+![Chat with source](docs/images/features/09-chat-with-source.png)
+
+![Chat with source part 2](docs/images/features/10-chat-with-source-p2.png)
+
+## Tech Stack
+
+| Layer | Libraries / Tools |
+| --- | --- |
+| Frontend | Next.js `15.2.4`, React `19.0.0`, TypeScript `5.8.2`, Tailwind CSS `3.4.17` |
+| Backend API | FastAPI `0.116.1`, Uvicorn `0.35.0`, Pydantic `2.11.7` |
+| Database | Supabase, PostgreSQL, `asyncpg`, `psycopg`, `pgvector` |
+| Document parsing | `pypdf`, TXT/Markdown parser, optional external PDF parser API |
+| Chunking | `langchain-text-splitters`, `tiktoken` |
+| Retrieval | pgvector cosine similarity, BM25 lexical search, hybrid search |
+| External services | LLM API endpoint, embedding API endpoint, optional OpenRouter embedding settings |
+
+## Architecture
+
+```txt
+Browser
+  |
+  v
+Next.js Frontend
+  - app router pages
+  - reusable React components
+  - typed fetch client in frontend/lib/api.ts
+  |
+  v
+FastAPI Backend
+  - /upload: receive files and start ingest
+  - /documents: workspaces, files, content, chunks
+  - /chat: sessions, messages, RAG answers
+  |
+  v
+Supabase Postgres + pgvector
+  - workspaces
+  - files
+  - chunks
+  - chat_sessions
+  - chat_messages
+  - vector and lexical indexes
+  |
+  v
+External AI Services
+  - embedding API
+  - LLM API
 ```
+
+## Repository Structure
+
+```txt
 local_notebooklm/
-├── frontend/                 # Next.js app
-│   ├── app/                 # Pages & layouts
-│   ├── components/          # React components
-│   ├── lib/                 # Utilities & API calls
-│   ├── package.json
-│   └── .env.local.example
-├── backend/                 # FastAPI app
-│   ├── main.py             # Entry point
-│   ├── routers/            # API endpoints
-│   ├── services/           # Business logic
-│   ├── models/             # Pydantic models
-│   ├── requirements.txt
-│   └── .env.example
-├── .venv/                   # Python virtual env (sẽ tạo)
+├── backend/
+│   ├── main.py                  # FastAPI entry point
+│   ├── config.py                # Environment config loader
+│   ├── database.py              # Database pool/client setup
+│   ├── routers/                 # API route modules
+│   ├── services/                # Ingest, parsing, embeddings, vector store, LLM client
+│   ├── models/                  # Pydantic request/response models
+│   ├── data/uploads/.gitkeep    # Local temporary upload folder
+│   └── requirements.txt
+├── frontend/
+│   ├── app/                     # Next.js App Router pages
+│   ├── components/              # UI components
+│   ├── lib/                     # API client and UI helpers
+│   ├── public/                  # Runtime static assets
+│   └── package.json
+├── docs/
+│   └── images/features/         # README demo screenshots
+├── supabase_migration.sql       # One-shot Supabase schema migration
+├── .env.example                 # Backend/root environment template
+├── .gitignore
 └── README.md
 ```
 
-## Clone và cài đặt nhanh
+## Requirements
 
-## 1. Setup Backend (FastAPI + Python venv)
+- Node.js 20 LTS or newer.
+- Python 3.10 or newer.
+- npm.
+- Supabase project with Postgres extensions enabled by `supabase_migration.sql`.
+- Running LLM API and embedding API endpoints.
 
-**Bước 1: Clone repo**
+## Environment Variables
+
+Create a root `.env` from `.env.example`.
+
+```env
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+DATABASE_URL=
+
+LLM_API_URL=http://127.0.0.1:8001
+LLM_API_KEY=
+
+EMBEDDING_API_URL=
+EMBEDDING_DIM=1024
+EMBED_MODEL=BAAI/bge-m3
+
+OPENROUTER_API_KEY=
+OPENROUTER_SITE_URL=
+OPENROUTER_SITE_NAME=
+
+PDF_PARSE_API_URL=
+
+CHUNK_SIZE=1024
+CHUNK_OVERLAP=128
+```
+
+For the frontend, create `frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8000
+```
+
+Never commit `.env`, `.env.local`, API keys, database URLs, or Supabase service role keys.
+
+## Database Setup
+
+Run the SQL file once in the Supabase SQL Editor:
+
+```txt
+supabase_migration.sql
+```
+
+The migration creates workspace, file, chunk, BM25 term, and chat tables. It also enables `vector` and `pg_trgm`, then creates vector search functions and indexes.
+
+## Quick Start
+
+Clone the repository:
 
 ```bash
 git clone https://github.com/HuyNguyenTheDev/local_notebooklm.git
 cd local_notebooklm
 ```
 
-**Bước 2: Tạo Python virtual environment (ở ROOT của project)**
+Install backend dependencies:
 
 ```bash
 python -m venv .venv
 ```
 
-**Bước 3: Kích hoạt virtual environment**
+Windows PowerShell:
 
-**Windows (PowerShell):**
 ```powershell
 .\.venv\Scripts\Activate.ps1
-```
-
-**Windows (CMD):**
-```cmd
-.venv\Scripts\activate.bat
-```
-
-**macOS / Linux:**
-```bash
-source .venv/bin/activate
-```
-
-Sau khi kích hoạt thành công, bạn sẽ thấy `(.venv)` ở đầu dòng lệnh.
-
-**Bước 4: Cài đặt dependencies backend**
-
-```bash
 pip install --upgrade pip
 pip install -r backend/requirements.txt
 ```
 
-**Bước 5: Tạo file `.env` cho backend**
+macOS/Linux:
 
 ```bash
-cd backend
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r backend/requirements.txt
 ```
 
-**Windows (PowerShell):**
-```powershell
-Copy-Item .env.example .env
-```
-
-**Windows (CMD) / macOS / Linux:**
-```bash
-cp .env.example .env
-```
-
-**Bước 6: Cập nhật `backend/.env`**
-
-Mở file `backend/.env` và điền ngrok URL (sau khi setup Colab):
-
-```env
-LLM_API_URL=https://xxxx.ngrok-free.app/chat
-```
-
-Quay lại root project:
-```bash
-cd ..
-```
-
-**Bước 7: Chạy backend**
+Start the backend from the repository root:
 
 ```bash
 uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Backend sẽ chạy tại: **http://127.0.0.1:8000**
-
-**Để kiểm tra**:
-- Health check: http://127.0.0.1:8000 (trả về status)
-- Swagger API docs: http://127.0.0.1:8000/docs
-
-## 2. Setup Frontend (Next.js)
-
-**Bước 1: Mở terminal mới** (giữ terminal backend chạy)
+Install and run the frontend:
 
 ```bash
-cd local_notebooklm/frontend
-```
-
-**Bước 2: Cài đặt dependencies**
-
-```bash
+cd frontend
 npm install
-```
-
-Hoặc nếu dùng `pnpm`:
-```bash
-pnpm install
-```
-
-**Bước 3: Tạo file `.env.local`**
-
-**Windows (PowerShell):**
-```powershell
-Copy-Item .env.local.example .env.local
-```
-
-**Windows (CMD) / macOS / Linux:**
-```bash
-cp .env.local.example .env.local
-```
-
-**Bước 4: Cập nhật `frontend/.env.local`**
-
-Mở file `frontend/.env.local` và kiểm tra backend URL:
-
-```env
-NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8000
-```
-
-**Bước 5: Chạy frontend**
-
-```bash
 npm run dev
 ```
 
-Frontend sẽ chạy tại: **http://localhost:3000**
+Open the app:
 
-Mở trình duyệt và truy cập: http://localhost:3000
-
-## 3. Setup LLM Server (Google Colab + ngrok)
-
-Backend sẽ gọi endpoint LLM Server để trả lời câu hỏi.
-
-**API Backend gọi:**
-```
-POST {LLM_API_URL}
+```txt
+http://localhost:3000
 ```
 
-**Request từ Backend:**
-```json
-{
-  "question": "Câu hỏi từ người dùng",
-  "context": "Nội dung từ các tài liệu liên quan"
-}
+Backend docs:
+
+```txt
+http://127.0.0.1:8000/docs
+http://127.0.0.1:8000/redoc
 ```
 
-**Response dự kiến từ LLM Server:**
-```json
-{
-  "answer": "Câu trả lời từ LLM"
-}
-```
+## Main API
 
-**Lưu ý:**
-- Nếu ngrok URL thay đổi sau khi chạy Colab, hãy cập nhật lại `backend/.env`
-- Đảm bảo Colab server vẫn đang chạy khi gửi request từ frontend
+| Endpoint | Method | Purpose |
+| --- | --- | --- |
+| `/` | GET | Health check |
+| `/upload` | POST | Upload one or more files and start background ingest |
+| `/documents/workspaces` | GET | List workspaces |
+| `/documents/workspaces` | POST | Create workspace |
+| `/documents/workspaces/search` | GET | Search workspaces |
+| `/documents/workspace/{workspace_id}` | DELETE | Delete workspace |
+| `/documents?workspace_id=...` | GET | List workspace documents |
+| `/documents/{file_id}` | GET | Read parsed document content |
+| `/documents/{file_id}/chunks` | GET | List generated chunks |
+| `/documents/{file_id}/rechunk` | POST | Retry chunking/embedding |
+| `/documents/{file_id}` | PATCH | Rename document |
+| `/documents/{file_id}` | DELETE | Delete document |
+| `/chat/sessions` | GET | List chat sessions |
+| `/chat/sessions` | POST | Create chat session |
+| `/chat/sessions/{session_id}/messages` | GET | Read chat messages |
+| `/chat/sessions/{session_id}` | PATCH | Rename chat session |
+| `/chat/sessions/{session_id}` | DELETE | Delete chat session |
+| `/chat` | POST | Ask a RAG question |
 
-## Cách sử dụng
+## Usage Flow
 
-1. **Tạo workspace**: Nhập tên workspace trên trang chủ
-2. **Upload tài liệu**: Kéo-thả hoặc chọn file PDF/TXT/MD trong mỗi workspace
-3. **Sửa tên file**: Kích đúp vào tên hoặc dùng nút 3 chấm (⋮)
-4. **Chat**: Hỏi câu hỏi dựa trên nội dung các tài liệu đã upload
-5. **Xóa tài liệu**: Dùng nút 3 chấm (⋮) → Delete
-6. **Xóa workspace**: Từ trang chủ, xóa workspace hoàn toàn
+1. Create a workspace from the home page.
+2. Open the workspace and click `Add Source`.
+3. Upload PDF/TXT/MD files.
+4. Wait for the source status to become `Indexed`.
+5. Inspect content or chunks from the Sources view if needed.
+6. Ask questions in Chat.
+7. Use Hybrid mode when you want vector search plus lexical matching.
 
-## API Chính
+## Development Commands
 
-| Endpoint | Method | Mô tả |
-|----------|--------|-------|
-| `/upload` | POST | Upload tài liệu (PDF/TXT/MD) |
-| `/documents` | GET | Lấy danh sách tài liệu của workspace |
-| `/documents/{id}` | DELETE | Xóa tài liệu |
-| `/documents/{id}` | PATCH | Sửa tên tài liệu |
-| `/chat` | POST | Gửi câu hỏi, nhận câu trả lời |
+Backend:
 
-**Query Parameters:**
-- `workspace_id`: ID của workspace (bắt buộc cho hầu hết endpoints)
-
-**Example - Upload:**
 ```bash
-curl -X POST http://127.0.0.1:8000/upload \
-  -F "files=@document.pdf" \
-  -F "workspace_id=workspace123"
-```
-
-**Example - Chat:**
-```bash
-curl -X POST http://127.0.0.1:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "Nội dung tài liệu nói gì?",
-    "workspace_id": "workspace123"
-  }'
-```
-
-## Lưu trữ dữ liệu
-
-- **Tải lên tài liệu**: `backend/data/uploads/`
-- **Metadata**: `backend/data/metadata.json` (JSON file lưu trữ thông tin tất cả tài liệu)
-- **Workspace**: Lưu trong `localStorage` của trình duyệt (client-side)
-
-## Lệnh thường dùng
-
-**Chạy cả bộ (2 terminal)**
-
-Terminal 1 (Backend):
-```bash
-# Từ root project
 uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Terminal 2 (Frontend):
+Frontend:
+
 ```bash
-# Từ frontend/
+cd frontend
 npm run dev
 ```
 
-**Build Frontend cho production:**
+Production frontend build:
+
 ```bash
 cd frontend
 npm run build
 npm start
 ```
 
-**Xem Swagger API docs:**
-- http://127.0.0.1:8000/docs (Swagger UI)
-- http://127.0.0.1:8000/redoc (ReDoc)
+## Git Hygiene
 
-## Xử lý sự cố
+The repo is configured to ignore local secrets, virtual environments, build outputs, logs, and uploaded runtime files. Demo screenshots belong in:
 
-### Backend không khởi động
-
-**Lỗi: "ModuleNotFoundError: No module named 'backend'"**
-- ✅ Đảm bảo đang ở **ROOT** của project khi chạy `uvicorn`
-- ✅ Đảm bảo `.venv` đã được kích hoạt (thấy `(.venv)` ở dòng lệnh)
-- ✅ Đảm bảo chạy `pip install -r backend/requirements.txt` thành công
-
-**Lỗi: "Address already in use"**
-- Port 8000 đang bị chiếm dụng
-- **Cách fix**: Chạy trên port khác:
-  ```bash
-  uvicorn backend.main:app --reload --host 127.0.0.1 --port 8001
-  ```
-
-### Frontend không kết nối backend
-
-**Lỗi: "Failed to fetch from http://127.0.0.1:8000"**
-- ✅ Kiểm tra `frontend/.env.local` có `NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8000`
-- ✅ Backend có chạy trên port 8000 không?
-- ✅ Thử trực tiếp: http://127.0.0.1:8000 trên trình duyệt (nên thấy status)
-
-**Lỗi: CORS (Cross-Origin Request)**
-- Backend không cho phép frontend call
-- Đảm bảo backend chạy từ root với `uvicorn backend.main:app ...`
-
-### Chat không hoạt động
-
-**Lỗi: "Chat failed" hoặc timeout**
-- ✅ `LLM_API_URL` trong `backend/.env` có đúng không?
-- ✅ Colab server có đang chạy không?
-- ✅ ngrok tunnel có còn active không? (ngrok URL thay đổi mỗi lần restart)
-
-**Cách kiểm tra LLM endpoint:**
-```bash
-curl -X POST https://xxxx.ngrok-free.app/chat \
-  -H "Content-Type: application/json" \
-  -d '{"question": "test", "context": "test"}'
+```txt
+docs/images/features/
 ```
 
-### PDF không được đọc
+Runtime app images that the frontend serves directly belong in:
 
-**Lỗi: "Unable to parse PDF"**
-- PDF phải có **text layer** (không phải scan)
-- Dùng OCR tool để convert nếu là scan image
-- Hỗ trợ format: PDF, TXT, MD
-
-### Node.js / npm lỗi
-
-**Lỗi: "npm: The term 'npm' is not recognized"**
-- Node.js chưa được cài hoặc không trong PATH
-- **Cách fix**:
-  1. Cài Node.js 20 LTS từ https://nodejs.org
-  2. Restart terminal
-  3. Kiểm tra: `node --version` và `npm --version`
-
-### Python venv không hoạt động
-
-**Lỗi kích hoạt venv**
-
-Windows PowerShell không cho phép chạy script:
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-# Rồi thử lại
-.\.venv\Scripts\Activate.ps1
+```txt
+frontend/public/
 ```
 
-## Deployment (Production)
+## Troubleshooting
 
-Hiện tại setup này là cho **development local**. Để deploy production, thêm:
+If the backend cannot connect to Supabase, check `DATABASE_URL`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`.
 
-- ✅ **Reverse Proxy**: Nginx hoặc Caddy
-- ✅ **Database**: SQLite/PostgreSQL (thay vì JSON file)
-- ✅ **Authentication**: User login
-- ✅ **CORS Configuration**: Chỉ cho phép domain mình
-- ✅ **Logging & Monitoring**: Ghi log request/response
-- ✅ **Backup**: Tự động backup metadata
+If chat fails, verify that `LLM_API_URL` is reachable and that the external LLM server is running.
 
-## Hỗ trợ & Đóng góp
+If retrieval fails, verify that `EMBEDDING_API_URL`, `EMBEDDING_DIM`, and `EMBED_MODEL` match your embedding service and database schema.
 
-- Bug reports: Tạo issue trên GitHub
-- Suggestions: Discussions hoặc Pull Requests
+If PDF parsing returns empty text, use PDFs with a text layer or configure `PDF_PARSE_API_URL` for OCR/parser fallback.
 
----
+## Project Status
 
-**Version**: 1.0.0 | **Last Updated**: March 2026
+Version: `2.0.0`
+
+This project is currently designed for local development and educational RAG experiments. For production, add authentication, stricter CORS, request rate limits, observability, backup jobs, and secret rotation procedures.

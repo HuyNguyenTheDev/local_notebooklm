@@ -220,7 +220,7 @@ export default function WorkspaceEntryPage({ params }: WorkspaceEntryPageProps) 
                 onDeleteSession={handleDeleteChatSession}
               />
             </div>
-            <div className="flex-1 overflow-hidden p-4">
+            <div className="flex-1 overflow-hidden p-2">
               <ChatBox
                 workspaceId={workspaceId}
                 activeSessionId={activeChatSessionId}
@@ -299,6 +299,7 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [rechunkingIds, setRechunkingIds] = useState<Set<string>>(new Set());
   const [viewing, setViewing] = useState<{
     id: string;
     filename: string;
@@ -309,7 +310,7 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
   } | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { deleteDocument, renameDocument, getDocumentContent, getDocumentChunks } = require("@/lib/api") as typeof import("@/lib/api");
+  const { deleteDocument, renameDocument, getDocumentContent, getDocumentChunks, rechunkDocument } = require("@/lib/api") as typeof import("@/lib/api");
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
@@ -353,6 +354,7 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
 
   const canViewContent = (doc: DocumentPreview) => FINAL_PARSE_STATUSES.has(doc.parse_status);
   const canViewChunks = (doc: DocumentPreview) => doc.parse_status === "done";
+  const canRechunk = (doc: DocumentPreview) => doc.parse_status === "failed";
 
   const handleDelete = async (id: string) => {
     await deleteDocument(id, workspaceId);
@@ -402,6 +404,24 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load chunks";
       setViewing({ id: doc.id, filename: doc.filename, mode: "content", content: message, chunks: [], loading: false });
+    }
+  };
+
+  const handleRechunk = async (doc: DocumentPreview) => {
+    setOpenMenuId(null);
+    setRechunkingIds((prev) => new Set(prev).add(doc.id));
+    try {
+      await rechunkDocument(doc.id);
+      onDeleted();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to rechunk document";
+      window.alert(message);
+    } finally {
+      setRechunkingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(doc.id);
+        return next;
+      });
     }
   };
 
@@ -473,6 +493,15 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
                 </button>
                 <button
                   type="button"
+                  onClick={() => void handleRechunk(doc)}
+                  disabled={!canRechunk(doc) || rechunkingIds.has(doc.id)}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors text-on-surface hover:bg-surface-container-low disabled:text-on-surface-variant/60 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                >
+                  <span className="material-symbols-outlined text-[16px]">refresh</span>
+                  {rechunkingIds.has(doc.id) ? "Rechunking..." : "Rechunk"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => { setEditingId(doc.id); setEditingName(doc.filename); setOpenMenuId(null); }}
                   className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-on-surface hover:bg-surface-container-low transition-colors"
                 >
@@ -531,6 +560,17 @@ function DocumentGrid({ workspaceId, documents, onDeleted, onAddSource }: Docume
             <div className="text-[11px] text-on-surface-variant">
               <p className="font-semibold">{formatDate(doc.created_at)}</p>
             </div>
+            {canRechunk(doc) && editingId !== doc.id && (
+              <button
+                type="button"
+                onClick={() => void handleRechunk(doc)}
+                disabled={rechunkingIds.has(doc.id)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-primary text-on-primary rounded-lg text-xs font-bold hover:bg-primary-dim disabled:opacity-60 disabled:cursor-wait transition-colors"
+              >
+                <span className="material-symbols-outlined text-[14px]">refresh</span>
+                {rechunkingIds.has(doc.id) ? "Running" : "Rechunk"}
+              </button>
+            )}
             {editingId === doc.id && (
               <div className="flex gap-1">
                 <button

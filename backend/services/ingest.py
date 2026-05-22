@@ -45,6 +45,39 @@ async def ingest_file(file_id: UUID, workspace_id: UUID, stored_path: Path) -> N
             stored_path.unlink(missing_ok=True)
 
 
+async def rechunk_file(file_id: UUID, workspace_id: UUID, raw_text: str) -> None:
+    """Rebuild chunks and embeddings from raw_text already stored in the database."""
+    try:
+        await update_file_status(file_id, "processing")
+
+        chunks = split_text(raw_text)
+        if not chunks:
+            print(f"[WARN] rechunk_file {file_id}: no chunks generated")
+            await update_file_status(file_id, "failed")
+            return
+
+        embeddings, token_counts = await embed_texts(chunks)
+
+        await delete_chunks_by_file(file_id)
+        await insert_chunks(
+            file_id=file_id,
+            workspace_id=workspace_id,
+            chunks=chunks,
+            embeddings=embeddings,
+            token_counts=token_counts,
+            embed_model=EMBED_MODEL,
+        )
+        await refresh_bm25_for_file(file_id)
+        await update_file_status(file_id, "done")
+        print(f"[INFO] rechunk_file {file_id}: {len(chunks)} chunks embedded & stored.")
+    except Exception as exc:
+        import traceback
+        with open("ingest_error.log", "w", encoding="utf-8") as f:
+            f.write(traceback.format_exc())
+        print(f"[ERROR] rechunk_file {file_id} failed: {exc}")
+        await update_file_status(file_id, "failed")
+
+
 async def _run_ingest(file_id: UUID, workspace_id: UUID, stored_path: Path) -> None:
     parse_done = False
     try:

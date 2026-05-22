@@ -109,6 +109,17 @@ export async function getDocumentChunks(fileId: string): Promise<DocumentChunk[]
   return response.json();
 }
 
+export async function rechunkDocument(fileId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/documents/${fileId}/rechunk`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Failed to rechunk document: ${detail}`);
+  }
+}
+
 export async function createWorkspace(name: string): Promise<WorkspacePreview> {
   const response = await fetch(`${API_BASE_URL}/documents/workspaces`, {
     method: "POST",

@@ -17,10 +17,11 @@ from __future__ import annotations
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
 from backend.models.chunk import ChunkRecord
 from backend.models.document import DocumentPreview, WorkspaceCreate, WorkspacePreview
+from backend.services.ingest import rechunk_file
 from backend.services.vector_store import (
     create_workspace,
     delete_file,
@@ -129,6 +130,30 @@ async def get_document_chunks(file_id: UUID) -> List[ChunkRecord]:
 
     rows = await list_chunks_by_file(file_id)
     return [ChunkRecord(**r) for r in rows]
+
+
+@router.post("/{file_id}/rechunk")
+async def rechunk_document(file_id: UUID, background_tasks: BackgroundTasks) -> dict:
+    """Retry chunking/embedding for a document that already has parsed raw_text."""
+    row = await get_file(file_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    raw_text = (row.get("raw_text") or "").strip()
+    if not raw_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Document has no parsed text to rechunk. Please upload it again.",
+        )
+
+    if row.get("parse_status") == "processing":
+        raise HTTPException(status_code=409, detail="Document is already processing")
+
+    background_tasks.add_task(rechunk_file, file_id, UUID(row["workspace_id"]), raw_text)
+    return {
+        "status": "processing",
+        "id": str(file_id),
+    }
 
 
 @router.delete("/{file_id}")
