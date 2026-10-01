@@ -173,7 +173,7 @@ export default function ChatBox({
             </p>
 
             {/* Suggested questions */}
-            <div className="mt-6 flex flex-col gap-2 w-full max-w-sm">
+            {/* <div className="mt-6 flex flex-col gap-2 w-full max-w-sm">
               {[t("suggestedQ1"), t("suggestedQ2"), t("suggestedQ3")].map((suggestion) => (
                 <button
                   key={suggestion}
@@ -184,7 +184,7 @@ export default function ChatBox({
                   {suggestion}
                 </button>
               ))}
-            </div>
+            </div> */}
           </div>
         ) : (
           <>
